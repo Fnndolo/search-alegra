@@ -5,7 +5,7 @@ const fs = require('fs');
 const app = express();
 
 // Serve static files from the Angular app build directory
-const distPath = path.join(__dirname, 'dist/smart-alegra');
+const distPath = path.join(__dirname, 'dist/smart-alegra/browser');
 
 // Debug: Check if dist folder exists
 console.log('Checking dist path:', distPath);
