@@ -26,6 +26,14 @@ export class BillsController {
 
       const result = await this.billsDbService.getCachedBills(store);
       this.logger.log(`✅ Bills retrieved for ${store}: ${result?.data?.length || 0} items`);
+      this.logger.log(`📊 Bills result structure:`, {
+        updating: result?.updating,
+        progress: result?.progress,
+        fullyLoaded: result?.fullyLoaded,
+        dataLength: result?.data?.length,
+        store: result?.store,
+        total: result?.total
+      });
       
       // Si no hay datos, intentar cargar
       if (result.data.length === 0 && !result.updating) {

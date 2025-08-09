@@ -17,10 +17,34 @@ async function bootstrap() {
   console.log('ARMENIA_API_KEY:', process.env.ARMENIA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED');
   console.log('PEREIRA_API_KEY:', process.env.PEREIRA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED');
   
+  // Configuración de CORS más permisiva
   app.enableCors({
-    origin: [process.env.FRONTEND_ORIGIN || 'http://localhost:4200', 'http://localhost:4200'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    origin: [
+      process.env.FRONTEND_ORIGIN || 'http://localhost:4200', 
+      'http://localhost:4200',
+      'https://amusing-simplicity-production.up.railway.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:4200',
+      // Permitir cualquier origen en desarrollo
+      ...(process.env.NODE_ENV !== 'production' ? ['*'] : [])
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     credentials: true,
+    optionsSuccessStatus: 200,
+    preflightContinue: false
+  });
+  
+  console.log('🌐 CORS configured with origins:', [
+    process.env.FRONTEND_ORIGIN || 'http://localhost:4200', 
+    'http://localhost:4200',
+    'https://amusing-simplicity-production.up.railway.app'
+  ]);
+  
+  // Middleware para logging de requests
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - Origin: ${req.headers.origin || 'no-origin'}`);
+    next();
   });
   
   const port = process.env.PORT || 3000;

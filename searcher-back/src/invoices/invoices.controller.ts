@@ -26,6 +26,14 @@ export class InvoicesController {
 
       const result = await this.invoicesService.getCachedInvoices(store);
       this.logger.log(`✅ Invoices retrieved for ${store}: ${result?.data?.length || 0} items`);
+      this.logger.log(`📊 Result structure:`, {
+        updating: result?.updating,
+        progress: result?.progress,
+        fullyLoaded: result?.fullyLoaded,
+        dataLength: result?.data?.length,
+        store: result?.store,
+        total: result?.total
+      });
       
       // Si no hay datos, intentar cargar
       if (result.data.length === 0 && !result.updating) {

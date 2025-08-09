@@ -95,4 +95,14 @@ export class AppController {
       }
     };
   }
+
+  @Get('debug/cors-test')
+  async corsTest() {
+    return {
+      message: 'CORS test successful!',
+      timestamp: new Date().toISOString(),
+      headers_received: 'OK',
+      cors_status: 'WORKING'
+    };
+  }
 }
