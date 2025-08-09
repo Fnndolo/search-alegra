@@ -40,11 +40,43 @@ export class InvoicesComponent implements OnInit {
   rows = 30;
   filterValue = '';
 
-  constructor(private invoiceService: InvoiceService) {}
+  // Nuevas propiedades para el selector
+  invoiceTypes = [
+    { label: 'Facturas de Venta', value: 'sales' },
+    { label: 'Facturas de Compra', value: 'purchases' }
+  ];
+  selectedInvoiceType = 'sales';
+
+  // Propiedades para el selector de tiendas
+  stores = [
+    { label: 'Smart Gadgets Pasto', value: 'pasto' },
+    { label: 'Smart Gadgets Medellín', value: 'medellin' },
+    { label: 'Smart Gadgets Armenia', value: 'armenia' },
+    { label: 'Smart Gadgets Pereira', value: 'pereira' }
+  ];
+  selectedStore = 'pasto';
+
+  constructor(private invoiceService: InvoiceService) {
+    console.log('Constructor - invoiceTypes:', this.invoiceTypes);
+    console.log('Constructor - selectedInvoiceType:', this.selectedInvoiceType);
+  }
 
   ngOnInit() {
+    this.loadInvoices();
+  }
+
+  loadInvoices() {
     this.loading = true;
-    this.invoiceService.getAllInvoices().subscribe((res) => {
+    // Aquí llamaremos diferentes métodos según el tipo seleccionado
+    if (this.selectedInvoiceType === 'sales') {
+      this.loadSalesInvoices();
+    } else {
+      this.loadPurchaseInvoices();
+    }
+  }
+
+  loadSalesInvoices() {
+    this.invoiceService.getAllInvoices(this.selectedStore).subscribe((res) => {
       this.updating = res.updating;
       this.progress = res.progress;
       this.allInvoices = res.data;
@@ -52,6 +84,38 @@ export class InvoicesComponent implements OnInit {
       this.invoices = this.allInvoices.slice(0, this.rows);
       this.loading = false;
     });
+  }
+
+  loadPurchaseInvoices() {
+    // Usando el service para facturas de compra
+    this.invoiceService.getAllPurchaseInvoices(this.selectedStore).subscribe((res) => {
+      this.updating = res.updating;
+      this.progress = res.progress;
+      this.allInvoices = res.data;
+      this.totalRecords = this.allInvoices.length;
+      this.invoices = this.allInvoices.slice(0, this.rows);
+      this.loading = false;
+    });
+  }
+
+  onInvoiceTypeChange() {
+    console.log('Tipo seleccionado:', this.selectedInvoiceType);
+    this.page = 0;
+    this.filterValue = '';
+    this.allInvoices = [];
+    this.invoices = [];
+    this.totalRecords = 0;
+    this.loadInvoices();
+  }
+
+  onStoreChange() {
+    console.log('Tienda seleccionada:', this.selectedStore);
+    this.page = 0;
+    this.filterValue = '';
+    this.allInvoices = [];
+    this.invoices = [];
+    this.totalRecords = 0;
+    this.loadInvoices();
   }
 
   onFilterChange() {
@@ -63,17 +127,34 @@ export class InvoicesComponent implements OnInit {
     let filtered = this.allInvoices;
     if (this.filterValue && this.filterValue.trim() !== '') {
       const filterLower = this.filterValue.toLowerCase();
-      filtered = this.allInvoices.filter(
-        (inv) =>
-          (inv.anotation &&
-            inv.anotation.toLowerCase().includes(filterLower)) ||
-          (inv.items &&
-            inv.items.some(
-              (item: any) =>
-                item.description &&
-                item.description.toLowerCase().includes(filterLower),
-            )),
-      );
+
+      if (this.selectedInvoiceType === 'sales') {
+        // Filtro para facturas de venta
+        filtered = this.allInvoices.filter(
+          (inv) =>
+            (inv.anotation &&
+              inv.anotation.toLowerCase().includes(filterLower)) ||
+            (inv.items &&
+              inv.items.some(
+                (item: any) =>
+                  item.description &&
+                  item.description.toLowerCase().includes(filterLower),
+              )),
+        );
+      } else {
+        // Filtro para facturas de compra
+        filtered = this.allInvoices.filter(
+          (inv) =>
+            (inv.observations &&
+              inv.observations.toLowerCase().includes(filterLower)) ||
+            (inv.purchases?.items &&
+              inv.purchases.items.some(
+                (item: any) =>
+                  item.description &&
+                  item.description.toLowerCase().includes(filterLower),
+              )),
+        );
+      }
     }
     this.totalRecords = filtered.length;
     this.invoices = filtered.slice(
@@ -84,14 +165,25 @@ export class InvoicesComponent implements OnInit {
 
   refreshInvoices() {
     this.loading = true;
-    this.invoiceService.updateInvoices().subscribe((res) => {
-      this.updating = res.updating;
-      this.progress = res.progress;
-      this.allInvoices = res.data;
-      this.totalRecords = this.allInvoices.length;
-      this.invoices = this.allInvoices.slice(0, this.rows);
-      this.loading = false;
-    });
+    if (this.selectedInvoiceType === 'sales') {
+      this.invoiceService.updateInvoices(this.selectedStore).subscribe((res) => {
+        this.updating = res.updating;
+        this.progress = res.progress;
+        this.allInvoices = res.data;
+        this.totalRecords = this.allInvoices.length;
+        this.invoices = this.allInvoices.slice(0, this.rows);
+        this.loading = false;
+      });
+    } else {
+      this.invoiceService.updatePurchaseInvoices(this.selectedStore).subscribe((res) => {
+        this.updating = res.updating;
+        this.progress = res.progress;
+        this.allInvoices = res.data;
+        this.totalRecords = this.allInvoices.length;
+        this.invoices = this.allInvoices.slice(0, this.rows);
+        this.loading = false;
+      });
+    }
   }
 
   loadInvoicesLazy(event: any) {
@@ -102,5 +194,8 @@ export class InvoicesComponent implements OnInit {
 
   goToAlegra(id: string) {
   window.open(`https://app.alegra.com/invoice/view/id/${id}`, '_blank');
+}
+  goToAlegraBills(id: string) {
+    window.open(`https://app.alegra.com/bill/view/id/${id}`, '_blank');
 }
 }

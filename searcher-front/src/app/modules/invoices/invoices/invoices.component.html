@@ -1,20 +1,55 @@
 <div class="card !bg-white !shadow-xl !rounded-xl !p-6">
-  <div class="p-inputgroup !flex !flex-col md:!flex-row md:!items-center md:!justify-between !gap-4 !mb-8">
-    <input
-      type="text"
-      pInputText
-      placeholder="Filtrar por anotación o descripción"
-      [(ngModel)]="filterValue"
-      (input)="onFilterChange()"
-      class="p-inputtext !border-2 !border-blue-700 !text-gray-800 !bg-white !placeholder-gray-400 hover:!bg-blue-50 !transition !font-medium !rounded-lg !px-4 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !w-full md:!w-80 !shadow-sm"
-    />
+  <div class="p-inputgroup !flex !flex-col lg:!flex-row lg:!items-center lg:!justify-between !gap-4 !mb-8">
+    <div class="!flex !flex-col md:!flex-row !gap-4 !items-start md:!items-center !w-full lg:!w-auto">
+      <!-- Selector de tienda -->
+      <div class="flex flex-col">
+        <label class="text-sm font-medium text-gray-700 mb-1">Tienda:</label>
+        <select
+          [(ngModel)]="selectedStore"
+          (change)="onStoreChange()"
+          class="border border-gray-300 rounded px-3 py-2 min-w-[200px]"
+        >
+          <option *ngFor="let store of stores" [value]="store.value">
+            {{ store.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Selector de tipo de factura -->
+      <div class="flex flex-col">
+        <label class="text-sm font-medium text-gray-700 mb-1">Tipo:</label>
+        <select
+          [(ngModel)]="selectedInvoiceType"
+          (change)="onInvoiceTypeChange()"
+          class="border border-gray-300 rounded px-3 py-2"
+        >
+          <option *ngFor="let type of invoiceTypes" [value]="type.value">
+            {{ type.label }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Filtro de búsqueda -->
+      <div class="flex flex-col">
+        <label class="text-sm font-medium text-gray-700 mb-1">Filtrar:</label>
+        <input
+          type="text"
+          pInputText
+          placeholder="Filtrar por anotación o descripción"
+          [(ngModel)]="filterValue"
+          (input)="onFilterChange()"
+          class="p-inputtext !border-2 !border-blue-700 !text-gray-800 !bg-white !placeholder-gray-400 hover:!bg-blue-50 !transition !font-medium !rounded-lg !px-4 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !w-full md:!w-80 !shadow-sm"
+        />
+      </div>
+    </div>
+
     <button
       pButton
       type="button"
       label="Actualizar nuevas facturas"
       (click)="refreshInvoices()"
       icon="pi pi-refresh"
-      class="p-button-outlined !border-2 !border-blue-700 !text-blue-700 !bg-white hover:!bg-blue-100 !transition !font-semibold !rounded-lg !px-8 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !shadow-sm"
+      class="p-button-outlined !border-2 !border-blue-700 !text-blue-700 !bg-white hover:!bg-blue-100 !transition !font-semibold !rounded-lg !px-8 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !shadow-sm !w-full md:!w-auto"
     ></button>
   </div>
   <div *ngIf="loading" class="p-mb-2 !text-blue-700 !font-semibold">
@@ -41,7 +76,9 @@
       <ng-template pTemplate="header">
         <tr class="!bg-blue-800 !text-white !text-sm">
           <th class="!px-6 !py-4 !font-bold !text-left !rounded-tl-xl">ID</th>
-          <th class="!px-6 !py-4 !font-bold !text-left">Cliente</th>
+          <th class="!px-6 !py-4 !font-bold !text-left">
+            {{ selectedInvoiceType === 'sales' ? 'Cliente' : 'Proveedor' }}
+          </th>
           <th class="!px-6 !py-4 !font-bold !text-left">Fecha</th>
           <th class="!px-6 !py-4 !font-bold !text-left">Anotación</th>
           <th class="!px-6 !py-4 !font-bold !text-left">Descripción Items</th>
@@ -51,12 +88,23 @@
       <ng-template pTemplate="body" let-invoice>
         <tr class="!bg-white !border-b !border-gray-100 hover:!bg-blue-50 !transition !shadow-sm">
           <td class="!px-6 !py-4 !font-mono !font-bold !text-blue-900">{{ invoice.numberTemplate.number }}</td>
-          <td class="!px-6 !py-4 !text-gray-900">{{ invoice.client?.name }}</td>
+          <td class="!px-6 !py-4 !text-gray-900">
+            {{ selectedInvoiceType === 'sales' ? invoice.client?.name : invoice.provider?.name }}
+          </td>
           <td class="!px-6 !py-4 !text-gray-700">{{ invoice.date }}</td>
-          <td class="!px-6 !py-4 !text-gray-700">{{ invoice.anotation }}</td>
           <td class="!px-6 !py-4 !text-gray-700">
-            <span *ngFor="let item of invoice.items; let i = index">
-              {{ item.description }}<span *ngIf="i < invoice.items.length - 1">, </span>
+            {{ invoice.anotation }}
+          </td>
+          <td class="!px-6 !py-4 !text-gray-700">
+            <span *ngIf="selectedInvoiceType === 'sales'">
+              <span *ngFor="let item of invoice.items; let i = index">
+                {{ item.description }}<span *ngIf="i < invoice.items.length - 1">, </span>
+              </span>
+            </span>
+            <span *ngIf="selectedInvoiceType === 'purchases'">
+              <span *ngFor="let item of invoice.purchases?.items; let i = index">
+                {{ item.description }}<span *ngIf="i < invoice.purchases.items.length - 1">, </span>
+              </span>
             </span>
           </td>
           <td class="!px-6 !py-4">
@@ -64,7 +112,7 @@
               pButton
               type="button"
               label="Ver"
-              (click)="goToAlegra(invoice.id)"
+              (click)="selectedInvoiceType === 'sales' ? goToAlegra(invoice.id) : goToAlegraBills(invoice.id)"
               icon="pi pi-refresh"
               class="p-button-outlined !border-2 !border-blue-600 !text-blue-700 !bg-white hover:!bg-blue-100 !transition !font-semibold !rounded-xl !px-5 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400"
             >
@@ -73,7 +121,7 @@
           </td>
         </tr>
       </ng-template>
-      
+
     </p-table>
   </div>
 </div>

@@ -5,14 +5,39 @@ import { environment } from '../../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class InvoiceService {
-  private apiUrl = environment.API_URL + '/invoices';
+  private apiUrl = environment.API_URL;
+
   constructor(private http: HttpClient) {}
 
-  getAllInvoices(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}/all`);
+  // Métodos para facturas de venta (invoices)
+  getAllInvoices(store?: string): Observable<any> {
+    const params = store ? `?store=${store}` : '';
+    return this.http.get<any>(`${this.apiUrl}/invoices/all${params}`);
   }
 
-  updateInvoices(): Observable<any> {
-    return this.http.get<any>(`${this.apiUrl}/update`);
+  updateInvoices(store?: string): Observable<any> {
+    const params = store ? `?store=${store}` : '';
+    return this.http.get<any>(`${this.apiUrl}/invoices/update${params}`);
+  }
+
+  // Métodos para facturas de compra (bills)
+  getAllPurchaseInvoices(store?: string): Observable<any> {
+    const params = store ? `?store=${store}` : '';
+    return this.http.get<any>(`${this.apiUrl}/bills/all${params}`).pipe(
+      catchError(error => {
+        console.error('Endpoint de facturas de compra no disponible:', error);
+        return of({ updating: false, progress: 0, data: [] });
+      })
+    );
+  }
+
+  updatePurchaseInvoices(store?: string): Observable<any> {
+    const params = store ? `?store=${store}` : '';
+    return this.http.get<any>(`${this.apiUrl}/bills/update${params}`).pipe(
+      catchError(error => {
+        console.error('Endpoint de facturas de compra no disponible:', error);
+        return of({ updating: false, progress: 0, data: [] });
+      })
+    );
   }
 }

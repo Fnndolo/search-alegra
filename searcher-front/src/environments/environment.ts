@@ -1,3 +1,3 @@
 export const environment = {
-  API_URL: 'https://tu.dominio.vercel.app',
+  API_URL: 'https://tu-backend-url.railway.app', // Cambia por la URL de tu backend en Railway
 };
