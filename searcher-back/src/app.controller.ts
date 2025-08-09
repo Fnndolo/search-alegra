@@ -81,4 +81,18 @@ export class AppController {
       };
     }
   }
+
+  @Get('debug/test-frontend')
+  async testFrontendConnection() {
+    return {
+      message: 'Backend conectado correctamente!',
+      timestamp: new Date().toISOString(),
+      cors: 'enabled',
+      frontend_origin: process.env.FRONTEND_ORIGIN,
+      test_data: {
+        invoices_sample: await this.dataSource.query('SELECT COUNT(*) as count FROM invoices WHERE store = $1', ['pasto']),
+        bills_sample: await this.dataSource.query('SELECT COUNT(*) as count FROM bills WHERE store = $1', ['pasto'])
+      }
+    };
+  }
 }
