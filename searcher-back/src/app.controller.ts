@@ -1,9 +1,14 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { DataSource } from 'typeorm';
 
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) {}
+  constructor(
+    private readonly appService: AppService,
+    @InjectDataSource() private dataSource: DataSource
+  ) {}
 
   @Get()
   getHello(): string {
@@ -11,14 +16,30 @@ export class AppController {
   }
 
   @Get('health')
-  getHealth() {
+  async getHealth() {
+    let dbStatus = 'NOT CONNECTED';
+    let dbError = null;
+    
+    try {
+      // Test database connection
+      await this.dataSource.query('SELECT 1');
+      dbStatus = 'CONNECTED';
+    } catch (error) {
+      dbStatus = 'ERROR';
+      dbError = error.message;
+    }
+
     return {
       status: 'OK',
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
       version: '1.0.0',
+      database: {
+        status: dbStatus,
+        url: process.env.DATABASE_URL ? 'CONFIGURED' : 'NOT CONFIGURED',
+        error: dbError
+      },
       services: {
-        database: process.env.DATABASE_URL ? 'CONFIGURED' : 'NOT CONFIGURED',
         alegra_api: process.env.ALEGRA_API_URL ? 'CONFIGURED' : 'NOT CONFIGURED',
         stores: {
           pasto: process.env.PASTO_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
