@@ -50,4 +50,35 @@ export class AppController {
       }
     };
   }
+
+  @Get('debug/data-count')
+  async getDataCount() {
+    try {
+      const invoicesCount = await this.dataSource.query('SELECT COUNT(*) as count FROM invoices');
+      const billsCount = await this.dataSource.query('SELECT COUNT(*) as count FROM bills');
+      const syncStatusCount = await this.dataSource.query('SELECT COUNT(*) as count FROM sync_status');
+      
+      // También obtener algunos registros de ejemplo
+      const sampleInvoices = await this.dataSource.query('SELECT id, store, date FROM invoices LIMIT 5');
+      const sampleBills = await this.dataSource.query('SELECT id, store, date FROM bills LIMIT 5');
+      
+      return {
+        counts: {
+          invoices: parseInt(invoicesCount[0].count),
+          bills: parseInt(billsCount[0].count),
+          syncStatus: parseInt(syncStatusCount[0].count)
+        },
+        samples: {
+          invoices: sampleInvoices,
+          bills: sampleBills
+        },
+        timestamp: new Date().toISOString()
+      };
+    } catch (error) {
+      return {
+        error: error.message,
+        timestamp: new Date().toISOString()
+      };
+    }
+  }
 }

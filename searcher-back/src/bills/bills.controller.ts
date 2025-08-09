@@ -26,6 +26,16 @@ export class BillsController {
 
       const result = await this.billsDbService.getCachedBills(store);
       this.logger.log(`✅ Bills retrieved for ${store}: ${result?.data?.length || 0} items`);
+      
+      // Si no hay datos, intentar cargar
+      if (result.data.length === 0 && !result.updating) {
+        this.logger.log(`🔄 No data found for ${store}, triggering initial load...`);
+        // Forzar carga inicial en el background
+        this.billsDbService.updateBillsManually(store).catch(error => {
+          this.logger.error(`Error in background load for ${store}:`, error);
+        });
+      }
+      
       return result;
     } catch (error) {
       this.logger.error(`❌ Error getting bills for store ${store}:`, error);
