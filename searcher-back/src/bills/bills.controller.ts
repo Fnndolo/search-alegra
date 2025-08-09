@@ -1,9 +1,11 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { BillsDbService } from './bills.service.db';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
 
 @Controller('bills')
 export class BillsController {
+  private readonly logger = new Logger(BillsController.name);
+
   constructor(
     private readonly billsDbService: BillsDbService,
     private readonly storeCredentialsService: StoreCredentialsService,
@@ -11,15 +13,27 @@ export class BillsController {
 
   @Get('all')
   async getAllBills(@Query('store') store: string) {
-    if (!store) {
-      throw new BadRequestException('El parámetro "store" es requerido');
-    }
+    try {
+      this.logger.log(`📄 Getting bills for store: ${store}`);
+      
+      if (!store) {
+        throw new BadRequestException('El parámetro "store" es requerido');
+      }
 
-    if (!this.storeCredentialsService.isValidStore(store)) {
-      throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
-    }
+      if (!this.storeCredentialsService.isValidStore(store)) {
+        throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+      }
 
-    return this.billsDbService.getCachedBills(store);
+      const result = await this.billsDbService.getCachedBills(store);
+      this.logger.log(`✅ Bills retrieved for ${store}: ${result?.data?.length || 0} items`);
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ Error getting bills for store ${store}:`, error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(`Error al obtener bills para la tienda ${store}: ${error.message}`);
+    }
   }
 
    @Get('update')

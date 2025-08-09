@@ -1,25 +1,39 @@
-import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
 
 @Controller('invoices')
 export class InvoicesController {
+  private readonly logger = new Logger(InvoicesController.name);
+
   constructor(
     private readonly invoicesService: InvoicesService,
     private readonly storeCredentialsService: StoreCredentialsService,
   ) {}
 
   @Get('all')
-  getAllInvoices(@Query('store') store?: string) {
-    if (!store) {
-      throw new BadRequestException('El parámetro "store" es requerido');
-    }
+  async getAllInvoices(@Query('store') store?: string) {
+    try {
+      this.logger.log(`🧾 Getting invoices for store: ${store}`);
+      
+      if (!store) {
+        throw new BadRequestException('El parámetro "store" es requerido');
+      }
 
-    if (!this.storeCredentialsService.isValidStore(store)) {
-      throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
-    }
+      if (!this.storeCredentialsService.isValidStore(store)) {
+        throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+      }
 
-    return this.invoicesService.getCachedInvoices(store);
+      const result = await this.invoicesService.getCachedInvoices(store);
+      this.logger.log(`✅ Invoices retrieved for ${store}: ${result?.data?.length || 0} items`);
+      return result;
+    } catch (error) {
+      this.logger.error(`❌ Error getting invoices for store ${store}:`, error);
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new InternalServerErrorException(`Error al obtener facturas para la tienda ${store}: ${error.message}`);
+    }
   }
 
    @Get('update')
