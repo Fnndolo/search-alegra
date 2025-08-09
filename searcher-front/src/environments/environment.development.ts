@@ -1,3 +1,3 @@
 export const environment = {
-  API_URL: 'https://search-alegra-back-production.up.railway.app',
+  API_URL: 'https://search-alegra-production.up.railway.app',
 };
