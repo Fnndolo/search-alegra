@@ -1,16 +1,16 @@
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
-import { InvoicesService } from './invoices.service';
+import { BillsDbService } from './bills.service.db';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
 
-@Controller('invoices')
-export class InvoicesController {
+@Controller('bills')
+export class BillsController {
   constructor(
-    private readonly invoicesService: InvoicesService,
+    private readonly billsDbService: BillsDbService,
     private readonly storeCredentialsService: StoreCredentialsService,
   ) {}
 
   @Get('all')
-  getAllInvoices(@Query('store') store?: string) {
+  async getAllBills(@Query('store') store: string) {
     if (!store) {
       throw new BadRequestException('El parámetro "store" es requerido');
     }
@@ -19,11 +19,11 @@ export class InvoicesController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
-    return this.invoicesService.getCachedInvoices(store);
+    return this.billsDbService.getCachedBills(store);
   }
 
    @Get('update')
-  async updateInvoices(@Query('store') store?: string) {
+  async updateBills(@Query('store') store: string) {
     if (!store) {
       throw new BadRequestException('El parámetro "store" es requerido');
     }
@@ -32,12 +32,12 @@ export class InvoicesController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
-    await this.invoicesService.updateInvoicesManually(store);
-    return this.invoicesService.getCachedInvoices(store);
+    await this.billsDbService.updateBillsManually(store);
+    return this.billsDbService.getCachedBills(store);
   }
 
   @Get('reload')
-  async reloadInvoices(@Query('store') store?: string) {
+  async reloadBills(@Query('store') store: string) {
     if (!store) {
       throw new BadRequestException('El parámetro "store" es requerido');
     }
@@ -46,12 +46,12 @@ export class InvoicesController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
-    await this.invoicesService.clearCacheAndReload(store);
-    return this.invoicesService.getCachedInvoices(store);
+    await this.billsDbService.clearCacheAndReload(store);
+    return this.billsDbService.getCachedBills(store);
   }
 
   @Get('ensure-full-persistence')
-  async ensureFullPersistence(@Query('store') store?: string) {
+  async ensureFullPersistence(@Query('store') store: string) {
     if (!store) {
       throw new BadRequestException('El parámetro "store" es requerido');
     }
@@ -60,7 +60,21 @@ export class InvoicesController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
-    await this.invoicesService.ensureFullDataPersistence(store);
-    return { message: `Persistencia completa asegurada para facturas de ${store}` };
+    await this.billsDbService.ensureFullDataPersistence(store);
+    return { message: `Persistencia completa asegurada para bills de ${store}` };
+  }
+
+  @Get('reset-sync')
+  async resetSyncStatus(@Query('store') store: string) {
+    if (!store) {
+      throw new BadRequestException('El parámetro "store" es requerido');
+    }
+
+    if (!this.storeCredentialsService.isValidStore(store)) {
+      throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    await this.billsDbService.resetSyncStatus(store);
+    return { message: `Estado de sincronización reseteado para bills de ${store}` };
   }
 }

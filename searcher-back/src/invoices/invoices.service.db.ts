@@ -289,7 +289,7 @@ export class InvoicesService {
 
     const lastDate = lastInvoice.datetime ? 
       lastInvoice.datetime.toISOString().split('T')[0] : 
-      lastInvoice.date?.toISOString().split('T')[0];
+      (lastInvoice.date ? lastInvoice.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
     this.logger.log(`Buscando facturas nuevas desde ${lastDate} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
 
@@ -301,7 +301,7 @@ export class InvoicesService {
         axios.get(credentials.invoicesApiUrl, {
           params: {
             start: 0,
-            limit: this.limit, // Usar el límite configurado de 30
+            limit: 100, // Límite más alto para facturas nuevas
             metadata: true,
             order_direction: 'DESC',
             date_after: lastDate,
@@ -317,7 +317,7 @@ export class InvoicesService {
         axios.get(credentials.invoicesApiUrl, {
           params: {
             start: 0,
-            limit: this.limit,
+            limit: 100,
             metadata: false,
             order_direction: 'DESC',
             date: lastDate,
@@ -365,6 +365,7 @@ export class InvoicesService {
     syncStatus.totalRecords = 0;
     syncStatus.isFullyLoaded = false;
     syncStatus.isSyncing = false;
+    syncStatus.lastSyncDatetime = null;
     await this.syncStatusRepository.save(syncStatus);
     
     // Iniciar carga completa
