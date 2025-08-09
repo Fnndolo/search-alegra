@@ -12,7 +12,9 @@ export class InvoiceService {
   // Métodos para facturas de venta (invoices)
   getAllInvoices(store?: string): Observable<any> {
     const params = store ? `?store=${store}` : '';
-    return this.http.get<any>(`${this.apiUrl}/invoices/all${params}`);
+    const fullUrl = `${this.apiUrl}/invoices/all${params}`;
+    console.log('🌐 Service: Llamando a', fullUrl);
+    return this.http.get<any>(fullUrl);
   }
 
   updateInvoices(store?: string): Observable<any> {
@@ -23,7 +25,9 @@ export class InvoiceService {
   // Métodos para facturas de compra (bills)
   getAllPurchaseInvoices(store?: string): Observable<any> {
     const params = store ? `?store=${store}` : '';
-    return this.http.get<any>(`${this.apiUrl}/bills/all${params}`).pipe(
+    const fullUrl = `${this.apiUrl}/bills/all${params}`;
+    console.log('🌐 Service: Llamando a', fullUrl);
+    return this.http.get<any>(fullUrl).pipe(
       catchError(error => {
         console.error('Endpoint de facturas de compra no disponible:', error);
         return of({ updating: false, progress: 0, data: [] });

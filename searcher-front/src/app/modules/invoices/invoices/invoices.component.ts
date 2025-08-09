@@ -76,25 +76,53 @@ export class InvoicesComponent implements OnInit {
   }
 
   loadSalesInvoices() {
-    this.invoiceService.getAllInvoices(this.selectedStore).subscribe((res) => {
-      this.updating = res.updating;
-      this.progress = res.progress;
-      this.allInvoices = res.data;
-      this.totalRecords = this.allInvoices.length;
-      this.invoices = this.allInvoices.slice(0, this.rows);
-      this.loading = false;
+    console.log('🔵 Cargando facturas de venta...');
+    console.log('🔵 URL completa:', `${this.invoiceService['apiUrl']}/invoices/all?store=${this.selectedStore}`);
+    
+    this.invoiceService.getAllInvoices(this.selectedStore).subscribe({
+      next: (res) => {
+        console.log('✅ Respuesta recibida para facturas de venta:', res);
+        console.log('✅ Datos recibidos:', res.data?.length || 0, 'facturas');
+        this.updating = res.updating;
+        this.progress = res.progress;
+        this.allInvoices = res.data || [];
+        this.totalRecords = this.allInvoices.length;
+        this.invoices = this.allInvoices.slice(0, this.rows);
+        this.loading = false;
+      },
+      error: (error) => {
+        console.error('❌ Error cargando facturas de venta:', error);
+        this.loading = false;
+        this.allInvoices = [];
+        this.invoices = [];
+        this.totalRecords = 0;
+      }
     });
   }
 
   loadPurchaseInvoices() {
+    console.log('🟣 Cargando facturas de compra...');
+    console.log('🟣 URL completa:', `${this.invoiceService['apiUrl']}/bills/all?store=${this.selectedStore}`);
+    
     // Usando el service para facturas de compra
-    this.invoiceService.getAllPurchaseInvoices(this.selectedStore).subscribe((res) => {
-      this.updating = res.updating;
-      this.progress = res.progress;
-      this.allInvoices = res.data;
-      this.totalRecords = this.allInvoices.length;
-      this.invoices = this.allInvoices.slice(0, this.rows);
-      this.loading = false;
+    this.invoiceService.getAllPurchaseInvoices(this.selectedStore).subscribe({
+      next: (res) => {
+        console.log('✅ Respuesta recibida para facturas de compra:', res);
+        console.log('✅ Datos recibidos:', res.data?.length || 0, 'facturas');
+        this.updating = res.updating;
+        this.progress = res.progress;
+        this.allInvoices = res.data || [];
+        this.totalRecords = this.allInvoices.length;
+        this.invoices = this.allInvoices.slice(0, this.rows);
+        this.loading = false;
+      },
+      error: (error) => {
+        console.error('❌ Error cargando facturas de compra:', error);
+        this.loading = false;
+        this.allInvoices = [];
+        this.invoices = [];
+        this.totalRecords = 0;
+      }
     });
   }
 
