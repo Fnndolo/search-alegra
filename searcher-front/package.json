@@ -8,8 +8,7 @@
     "build:prod": "ng build --configuration production",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "format": "prettier --write .",
-    "postinstall": "ng build --configuration production"
+    "format": "prettier --write ."
   },
   "private": true,
   "dependencies": {
