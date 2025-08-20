@@ -1,3 +1,162 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Estilos personalizados para el paginador de PrimeNG */
+.p-paginator {
+  background-color: white !important;
+  border-top: 2px solid #e5e7eb !important;
+  padding: 1rem 1.5rem !important;
+  border-bottom-left-radius: 0.75rem !important;
+  border-bottom-right-radius: 0.75rem !important;
+}
+
+.p-paginator .p-paginator-first,
+.p-paginator .p-paginator-prev,
+.p-paginator .p-paginator-next,
+.p-paginator .p-paginator-last {
+  background-color: white !important;
+  border: 2px solid #d1d5db !important;
+  color: #374151 !important;
+  border-radius: 0.5rem !important;
+  padding: 0.5rem 0.75rem !important;
+  margin: 0 0.25rem !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s !important;
+}
+
+.p-paginator .p-paginator-first:not(.p-disabled):hover,
+.p-paginator .p-paginator-prev:not(.p-disabled):hover,
+.p-paginator .p-paginator-next:not(.p-disabled):hover,
+.p-paginator .p-paginator-last:not(.p-disabled):hover {
+  background-color: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+}
+
+.p-paginator .p-paginator-first.p-disabled,
+.p-paginator .p-paginator-prev.p-disabled,
+.p-paginator .p-paginator-next.p-disabled,
+.p-paginator .p-paginator-last.p-disabled {
+  background-color: #f9fafb !important;
+  border-color: #e5e7eb !important;
+  color: #9ca3af !important;
+  cursor: not-allowed !important;
+}
+
+.p-paginator .p-paginator-pages {
+  display: flex !important;
+  gap: 0.25rem !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page {
+  background-color: white !important;
+  border: 2px solid #d1d5db !important;
+  color: #374151 !important;
+  border-radius: 0.5rem !important;
+  padding: 0.5rem 0.75rem !important;
+  margin: 0 0.25rem !important;
+  min-width: 40px !important;
+  height: 40px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all 0.2s !important;
+  font-weight: 500 !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page:hover {
+  background-color: #eff6ff !important;
+  border-color: #93c5fd !important;
+  color: #1d4ed8 !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: white !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight:hover {
+  background-color: #1d4ed8 !important;
+  border-color: #1d4ed8 !important;
+}
+
+/* Estilos más específicos para asegurar que la página activa se vea */
+.p-table .p-paginator .p-paginator-pages .p-paginator-page.p-highlight,
+.custom-paginator .p-paginator .p-paginator-pages .p-paginator-page.p-highlight,
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight,
+.p-paginator .p-paginator-pages .p-paginator-page[aria-current="page"],
+.p-paginator .p-paginator-pages .p-paginator-page.p-paginator-page-selected {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: white !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Forzar estilos para diferentes estados de página activa */
+.p-paginator .p-paginator-pages button.p-paginator-page.p-highlight,
+.p-paginator .p-paginator-pages button.p-paginator-page[aria-current="page"] {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: white !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* Override para cualquier estado activo */
+.p-paginator .p-paginator-pages .p-paginator-page:not(:hover).p-highlight {
+  background-color: #2563eb !important;
+  border-color: #2563eb !important;
+  color: white !important;
+}
+
+.p-paginator .p-paginator-current {
+  color: #4b5563 !important;
+  font-weight: 500 !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 0 1rem !important;
+}
+
+.p-paginator .p-dropdown {
+  border: 2px solid #d1d5db !important;
+  border-radius: 0.5rem !important;
+  height: 40px !important;
+}
+
+.p-paginator .p-dropdown .p-dropdown-label {
+  color: #374151 !important;
+  font-weight: 500 !important;
+}
+
+.p-paginator .p-dropdown:hover {
+  border-color: #93c5fd !important;
+}
+
+/* Responsive para el paginador */
+@media (max-width: 768px) {
+  .p-paginator {
+    padding: 0.75rem 1rem !important;
+  }
+
+  .p-paginator .p-paginator-first,
+  .p-paginator .p-paginator-prev,
+  .p-paginator .p-paginator-next,
+  .p-paginator .p-paginator-last,
+  .p-paginator .p-paginator-pages .p-paginator-page {
+    min-width: 35px !important;
+    height: 35px !important;
+    padding: 0.5rem !important;
+    font-size: 0.875rem !important;
+  }
+
+  .p-paginator .p-paginator-current {
+    font-size: 0.875rem !important;
+    padding: 0 0.5rem !important;
+  }
+}

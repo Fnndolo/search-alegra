@@ -35,7 +35,7 @@
         <input
           type="text"
           pInputText
-          placeholder="Filtrar por anotación o descripción"
+          placeholder="Buscar por ID, cliente/proveedor, item, anotación o descripción"
           [(ngModel)]="filterValue"
           (input)="onFilterChange()"
           class="p-inputtext !border-2 !border-blue-700 !text-gray-800 !bg-white !placeholder-gray-400 hover:!bg-blue-50 !transition !font-medium !rounded-lg !px-4 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !w-full md:!w-80 !shadow-sm"
@@ -53,15 +53,15 @@
     ></button>
   </div>
   <div *ngIf="loading" class="p-mb-2 !text-blue-700 !font-semibold">
-    <p>Descargando facturas...</p>
+    <p *ngIf="selectedInvoiceType !== '' && selectedStore !== ''">Descargando facturas...</p>
   </div>
   <div *ngIf="progress > 0" class="p-mb-2 !text-blue-700 !font-semibold">
-    <p>Progreso: {{ progress }} facturas descargadas.</p>
+    <p *ngIf="selectedInvoiceType !== '' && selectedStore !== ''">Progreso: {{ progress }} facturas descargadas.</p>
   </div>
   <div *ngIf="!loading && invoices.length === 0 && !updating" class="p-mb-2 !text-red-600 !font-semibold">
     <p>{{ selectedInvoiceType === '' || selectedStore === '' ? "Seleccione tienda y un tipo de factura para ver resultados." : "No se encontraron resultados para el filtro ingresado." }}</p>
   </div>
-  <div class="table-container !overflow-x-auto !rounded-xl !border !border-gray-200 !bg-gray-50 !shadow-lg">
+  <div *ngIf="selectedInvoiceType !== '' && selectedStore !== ''" class="table-container !overflow-x-auto !rounded-xl !border !border-gray-200 !bg-gray-50 !shadow-lg">
     <p-table
       [value]="invoices"
       [paginator]="true"
@@ -70,8 +70,11 @@
       [lazy]="true"
       [loading]="loading"
       [responsiveLayout]="'scroll'"
+      [showCurrentPageReport]="true"
+      currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} facturas"
+      [rowsPerPageOptions]="[10, 25, 50]"
       (onLazyLoad)="loadInvoicesLazy($event)"
-      class="!w-full"
+      class="!w-full custom-paginator"
     >
       <ng-template pTemplate="header">
         <tr class="!bg-blue-800 !text-white !text-sm">

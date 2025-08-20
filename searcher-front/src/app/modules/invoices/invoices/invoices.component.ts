@@ -76,15 +76,20 @@ export class InvoicesComponent implements OnInit {
   }
 
   loadSalesInvoices() {
-
     this.invoiceService.getAllInvoices(this.selectedStore).subscribe({
       next: (res) => {
         this.updating = res.updating;
         this.progress = res.progress;
         this.allInvoices = res.data || [];
         this.totalRecords = this.allInvoices.length;
-        this.invoices = this.allInvoices.slice(0, this.rows);
         this.loading = false;
+        
+        // Aplicar filtro automáticamente si hay texto de búsqueda
+        if (this.filterValue && this.filterValue.trim() !== '') {
+          this.filterInvoicesLocal();
+        } else {
+          this.invoices = this.allInvoices.slice(0, this.rows);
+        }
       },
       error: (error) => {
         this.loading = false;
@@ -103,8 +108,14 @@ export class InvoicesComponent implements OnInit {
         this.progress = res.progress;
         this.allInvoices = res.data || [];
         this.totalRecords = this.allInvoices.length;
-        this.invoices = this.allInvoices.slice(0, this.rows);
         this.loading = false;
+        
+        // Aplicar filtro automáticamente si hay texto de búsqueda
+        if (this.filterValue && this.filterValue.trim() !== '') {
+          this.filterInvoicesLocal();
+        } else {
+          this.invoices = this.allInvoices.slice(0, this.rows);
+        }
       },
       error: (error) => {
         this.loading = false;
@@ -117,7 +128,7 @@ export class InvoicesComponent implements OnInit {
 
   onInvoiceTypeChange() {
     this.page = 0;
-    this.filterValue = '';
+    // NO borramos el filterValue para mantener la búsqueda
     this.allInvoices = [];
     this.invoices = [];
     this.totalRecords = 0;
@@ -126,7 +137,7 @@ export class InvoicesComponent implements OnInit {
 
   onStoreChange() {
     this.page = 0;
-    this.filterValue = '';
+    // NO borramos el filterValue para mantener la búsqueda
     this.allInvoices = [];
     this.invoices = [];
     this.totalRecords = 0;
@@ -144,30 +155,60 @@ export class InvoicesComponent implements OnInit {
       const filterLower = this.filterValue.toLowerCase();
 
       if (this.selectedInvoiceType === 'sales') {
-        // Filtro para facturas de venta
+        // Filtro para facturas de venta (ID, Cliente, Item, Anotación, Descripción)
         filtered = this.allInvoices.filter(
           (inv) =>
+            // Buscar por ID
+            (inv.numberTemplate?.number &&
+              inv.numberTemplate.number.toString().toLowerCase().includes(filterLower)) ||
+            // Buscar por Cliente
+            (inv.client?.name &&
+              inv.client.name.toLowerCase().includes(filterLower)) ||
+            // Buscar por Item (nombre)
+            (inv.items &&
+              inv.items.some(
+                (item: any) =>
+                  item.name &&
+                  item.name.toLowerCase().includes(filterLower)
+              )) ||
+            // Buscar por Anotación
             (inv.anotation &&
               inv.anotation.toLowerCase().includes(filterLower)) ||
+            // Buscar por Descripción de items
             (inv.items &&
               inv.items.some(
                 (item: any) =>
                   item.description &&
-                  item.description.toLowerCase().includes(filterLower),
-              )),
+                  item.description.toLowerCase().includes(filterLower)
+              ))
         );
       } else {
-        // Filtro para facturas de compra
+        // Filtro para facturas de compra (ID, Proveedor, Items, Observaciones, Descripción)
         filtered = this.allInvoices.filter(
           (inv) =>
-            (inv.observations &&
-              inv.observations.toLowerCase().includes(filterLower)) ||
+            // Buscar por ID
+            (inv.numberTemplate?.number &&
+              inv.numberTemplate.number.toString().toLowerCase().includes(filterLower)) ||
+            // Buscar por Proveedor
+            (inv.provider?.name &&
+              inv.provider.name.toLowerCase().includes(filterLower)) ||
+            // Buscar por Items (nombre)
+            (inv.purchases?.items &&
+              inv.purchases.items.some(
+                (item: any) =>
+                  item.name &&
+                  item.name.toLowerCase().includes(filterLower)
+              )) ||
+            // Buscar por Anotación
+            (inv.anotation &&
+              inv.anotation.toLowerCase().includes(filterLower)) ||
+            // Buscar por Descripción de items
             (inv.purchases?.items &&
               inv.purchases.items.some(
                 (item: any) =>
                   item.description &&
-                  item.description.toLowerCase().includes(filterLower),
-              )),
+                  item.description.toLowerCase().includes(filterLower)
+              ))
         );
       }
     }
@@ -186,8 +227,14 @@ export class InvoicesComponent implements OnInit {
         this.progress = res.progress;
         this.allInvoices = res.data;
         this.totalRecords = this.allInvoices.length;
-        this.invoices = this.allInvoices.slice(0, this.rows);
         this.loading = false;
+        
+        // Aplicar filtro automáticamente si hay texto de búsqueda
+        if (this.filterValue && this.filterValue.trim() !== '') {
+          this.filterInvoicesLocal();
+        } else {
+          this.invoices = this.allInvoices.slice(0, this.rows);
+        }
       });
     } else {
       this.invoiceService.updatePurchaseInvoices(this.selectedStore).subscribe((res) => {
@@ -195,8 +242,14 @@ export class InvoicesComponent implements OnInit {
         this.progress = res.progress;
         this.allInvoices = res.data;
         this.totalRecords = this.allInvoices.length;
-        this.invoices = this.allInvoices.slice(0, this.rows);
         this.loading = false;
+        
+        // Aplicar filtro automáticamente si hay texto de búsqueda
+        if (this.filterValue && this.filterValue.trim() !== '') {
+          this.filterInvoicesLocal();
+        } else {
+          this.invoices = this.allInvoices.slice(0, this.rows);
+        }
       });
     }
   }
