@@ -56,6 +56,12 @@ export class InvoicesComponent implements OnInit {
   ];
   selectedStore = '';
 
+  // Propiedades para búsqueda masiva
+  showMassiveSearchModal = false;
+  massiveSearchText = '';
+  massiveSearchResults: any = null;
+  massiveSearchLoading = false;
+
   constructor(private invoiceService: InvoiceService) {
     console.log('Constructor - invoiceTypes:', this.invoiceTypes);
     console.log('Constructor - selectedInvoiceType:', this.selectedInvoiceType);
@@ -269,4 +275,101 @@ export class InvoicesComponent implements OnInit {
   goToAlegraBills(id: string) {
     window.open(`https://app.alegra.com/bill/view/id/${id}`, '_blank');
 }
+
+  // Métodos para búsqueda masiva
+  openMassiveSearchModal() {
+    this.showMassiveSearchModal = true;
+    this.massiveSearchText = '';
+    this.massiveSearchResults = null;
+  }
+
+  closeMassiveSearchModal() {
+    this.showMassiveSearchModal = false;
+    this.massiveSearchText = '';
+    this.massiveSearchResults = null;
+  }
+
+  performMassiveSearch() {
+    if (!this.massiveSearchText.trim()) {
+      return;
+    }
+
+    this.massiveSearchLoading = true;
+    
+    // Obtener lista de IMEIs (separados por espacios, saltos de línea, etc.)
+    const imeis = this.massiveSearchText
+      .trim()
+      .split(/[\s\n\r,]+/)
+      .filter(imei => imei.trim() !== '')
+      .map(imei => imei.trim());
+
+    const foundImeis: { imei: string, invoiceId: string }[] = [];
+    const notFoundImeis: string[] = [];
+    const matchingInvoices: any[] = [];
+
+    // Buscar cada IMEI en todas las facturas
+    imeis.forEach(imei => {
+      let found = false;
+      
+      for (const invoice of this.allInvoices) {
+        let hasImei = false;
+        
+        if (this.selectedInvoiceType === 'sales') {
+          // Buscar en items de ventas
+          hasImei = invoice.items?.some((item: any) => 
+            item.description?.toLowerCase().includes(imei.toLowerCase()) ||
+            item.observations?.toLowerCase().includes(imei.toLowerCase())
+          );
+        } else {
+          // Buscar en items de compras
+          hasImei = invoice.purchases?.items?.some((item: any) => 
+            item.description?.toLowerCase().includes(imei.toLowerCase()) ||
+            item.observations?.toLowerCase().includes(imei.toLowerCase())
+          );
+        }
+
+        if (hasImei) {
+          found = true;
+          const invoiceId = invoice.numberTemplate?.number || invoice.id;
+          
+          // Agregar IMEI con su ID de factura
+          foundImeis.push({
+            imei: imei,
+            invoiceId: invoiceId
+          });
+          
+          if (!matchingInvoices.find(inv => inv.id === invoice.id)) {
+            matchingInvoices.push(invoice);
+          }
+        }
+      }
+
+      if (!found) {
+        notFoundImeis.push(imei);
+      }
+    });
+
+    this.massiveSearchResults = {
+      totalSearched: imeis.length,
+      found: foundImeis,
+      notFound: notFoundImeis,
+      matchingInvoices: matchingInvoices
+    };
+
+    this.massiveSearchLoading = false;
+  }
+
+  applyMassiveSearchFilter() {
+    if (this.massiveSearchResults?.matchingInvoices) {
+      this.invoices = this.massiveSearchResults.matchingInvoices.slice(0, this.rows);
+      this.totalRecords = this.massiveSearchResults.matchingInvoices.length;
+      this.page = 0;
+      this.closeMassiveSearchModal();
+    }
+  }
+
+  clearMassiveSearchFilter() {
+    this.filterInvoicesLocal();
+    this.closeMassiveSearchModal();
+  }
 }
