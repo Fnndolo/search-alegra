@@ -314,18 +314,32 @@ export class InvoicesComponent implements OnInit {
       for (const invoice of this.allInvoices) {
         let hasImei = false;
         
-        if (this.selectedInvoiceType === 'sales') {
-          // Buscar en items de ventas
-          hasImei = invoice.items?.some((item: any) => 
-            item.description?.toLowerCase().includes(imei.toLowerCase()) ||
-            item.observations?.toLowerCase().includes(imei.toLowerCase())
-          );
-        } else {
-          // Buscar en items de compras
-          hasImei = invoice.purchases?.items?.some((item: any) => 
-            item.description?.toLowerCase().includes(imei.toLowerCase()) ||
-            item.observations?.toLowerCase().includes(imei.toLowerCase())
-          );
+        // Preparar regex para búsqueda
+        const imeiLower = imei.toLowerCase();
+        const regex = new RegExp('\\b' + imeiLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        
+        // Buscar en anotaciones de la factura
+        const anotation = invoice.anotation?.toLowerCase() || '';
+        hasImei = regex.test(anotation);
+        
+        if (!hasImei) {
+          if (this.selectedInvoiceType === 'sales') {
+            // Buscar en items de ventas
+            hasImei = invoice.items?.some((item: any) => {
+              const description = item.description?.toLowerCase() || '';
+              const observations = item.observations?.toLowerCase() || '';
+              
+              return regex.test(description) || regex.test(observations);
+            });
+          } else {
+            // Buscar en items de compras
+            hasImei = invoice.purchases?.items?.some((item: any) => {
+              const description = item.description?.toLowerCase() || '';
+              const observations = item.observations?.toLowerCase() || '';
+              
+              return regex.test(description) || regex.test(observations);
+            });
+          }
         }
 
         if (hasImei) {
