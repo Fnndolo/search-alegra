@@ -151,8 +151,11 @@ export class InvoicesComponent implements OnInit {
 
   filterInvoicesLocal() {
     let filtered = this.allInvoices;
-    if (this.filterValue && this.filterValue.trim() !== '') {
-      const filterLower = this.filterValue.toLowerCase();
+    // Usar trim() para ignorar espacios al inicio y final
+    const trimmedFilter = this.filterValue?.trim() || '';
+    
+    if (trimmedFilter !== '') {
+      const filterLower = trimmedFilter.toLowerCase();
 
       if (this.selectedInvoiceType === 'sales') {
         // Filtro para facturas de venta (ID, Cliente, Item, Anotación, Descripción)
