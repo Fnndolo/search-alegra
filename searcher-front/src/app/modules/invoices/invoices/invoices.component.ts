@@ -45,7 +45,7 @@ export class InvoicesComponent implements OnInit {
     { label: 'Facturas de Venta', value: 'sales' },
     { label: 'Facturas de Compra', value: 'purchases' }
   ];
-  selectedInvoiceType = 'sales';
+  selectedInvoiceType = '';
 
   // Propiedades para el selector de tiendas
   stores = [
@@ -54,7 +54,7 @@ export class InvoicesComponent implements OnInit {
     { label: 'Smart Gadgets Armenia', value: 'armenia' },
     { label: 'Smart Gadgets Pereira', value: 'pereira' }
   ];
-  selectedStore = 'pasto';
+  selectedStore = '';
 
   constructor(private invoiceService: InvoiceService) {
     console.log('Constructor - invoiceTypes:', this.invoiceTypes);
@@ -76,13 +76,9 @@ export class InvoicesComponent implements OnInit {
   }
 
   loadSalesInvoices() {
-    console.log('🔵 Cargando facturas de venta...');
-    console.log('🔵 URL completa:', `${this.invoiceService['apiUrl']}/invoices/all?store=${this.selectedStore}`);
-    
+
     this.invoiceService.getAllInvoices(this.selectedStore).subscribe({
       next: (res) => {
-        console.log('✅ Respuesta recibida para facturas de venta:', res);
-        console.log('✅ Datos recibidos:', res.data?.length || 0, 'facturas');
         this.updating = res.updating;
         this.progress = res.progress;
         this.allInvoices = res.data || [];
@@ -91,7 +87,6 @@ export class InvoicesComponent implements OnInit {
         this.loading = false;
       },
       error: (error) => {
-        console.error('❌ Error cargando facturas de venta:', error);
         this.loading = false;
         this.allInvoices = [];
         this.invoices = [];
@@ -101,14 +96,9 @@ export class InvoicesComponent implements OnInit {
   }
 
   loadPurchaseInvoices() {
-    console.log('🟣 Cargando facturas de compra...');
-    console.log('🟣 URL completa:', `${this.invoiceService['apiUrl']}/bills/all?store=${this.selectedStore}`);
-    
     // Usando el service para facturas de compra
     this.invoiceService.getAllPurchaseInvoices(this.selectedStore).subscribe({
       next: (res) => {
-        console.log('✅ Respuesta recibida para facturas de compra:', res);
-        console.log('✅ Datos recibidos:', res.data?.length || 0, 'facturas');
         this.updating = res.updating;
         this.progress = res.progress;
         this.allInvoices = res.data || [];
@@ -117,7 +107,6 @@ export class InvoicesComponent implements OnInit {
         this.loading = false;
       },
       error: (error) => {
-        console.error('❌ Error cargando facturas de compra:', error);
         this.loading = false;
         this.allInvoices = [];
         this.invoices = [];
@@ -127,7 +116,6 @@ export class InvoicesComponent implements OnInit {
   }
 
   onInvoiceTypeChange() {
-    console.log('Tipo seleccionado:', this.selectedInvoiceType);
     this.page = 0;
     this.filterValue = '';
     this.allInvoices = [];
@@ -137,7 +125,6 @@ export class InvoicesComponent implements OnInit {
   }
 
   onStoreChange() {
-    console.log('Tienda seleccionada:', this.selectedStore);
     this.page = 0;
     this.filterValue = '';
     this.allInvoices = [];

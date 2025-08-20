@@ -59,7 +59,7 @@
     <p>Progreso: {{ progress }} facturas descargadas.</p>
   </div>
   <div *ngIf="!loading && invoices.length === 0 && !updating" class="p-mb-2 !text-red-600 !font-semibold">
-    <p>No se encontraron resultados para el filtro ingresado.</p>
+    <p>{{ selectedInvoiceType === '' || selectedStore === '' ? "Seleccione tienda y un tipo de factura para ver resultados." : "No se encontraron resultados para el filtro ingresado." }}</p>
   </div>
   <div class="table-container !overflow-x-auto !rounded-xl !border !border-gray-200 !bg-gray-50 !shadow-lg">
     <p-table
@@ -80,8 +80,11 @@
             {{ selectedInvoiceType === 'sales' ? 'Cliente' : 'Proveedor' }}
           </th>
           <th class="!px-6 !py-4 !font-bold !text-left">Fecha</th>
+          <th class="!px-6 !py-4 !font-bold !text-left">
+            {{ selectedInvoiceType === 'sales' ? 'Item' : 'Items' }}
+          </th>
           <th class="!px-6 !py-4 !font-bold !text-left">Anotación</th>
-          <th class="!px-6 !py-4 !font-bold !text-left">Descripción Items</th>
+          <th class="!px-6 !py-4 !font-bold !text-left">Descripción</th>
           <th class="!px-6 !py-4 !font-bold !text-left !rounded-tr-xl">Acción</th>
         </tr>
       </ng-template>
@@ -92,6 +95,16 @@
             {{ selectedInvoiceType === 'sales' ? invoice.client?.name : invoice.provider?.name }}
           </td>
           <td class="!px-6 !py-4 !text-gray-700">{{ invoice.date }}</td>
+          <td class="!px-6 !py-4 !text-gray-700">
+            <span *ngIf="selectedInvoiceType === 'sales'">
+              {{ invoice.items[0]?.name }}
+            </span>
+            <span *ngIf="selectedInvoiceType === 'purchases'">
+              <span *ngFor="let item of invoice.purchases?.items; let i = index">
+                {{ item.name }}<span *ngIf="i < invoice.purchases.items.length - 1">, </span>
+              </span>
+            </span>
+          </td>
           <td class="!px-6 !py-4 !text-gray-700">
             {{ invoice.anotation }}
           </td>
