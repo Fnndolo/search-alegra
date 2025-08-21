@@ -9,8 +9,8 @@ import { HttpClientModule } from '@angular/common/http';
 
 export const appConfig: ApplicationConfig = {
   providers: [
-    provideZoneChangeDetection({ eventCoalescing: true }), 
-    provideRouter(routes), 
+    provideZoneChangeDetection({ eventCoalescing: true }),
+    provideRouter(routes),
     provideNoopAnimations(), // Sin animaciones pero permite que PrimeNG funcione
     providePrimeNG({
       theme: {

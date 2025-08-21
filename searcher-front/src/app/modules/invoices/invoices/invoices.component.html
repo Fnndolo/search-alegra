@@ -52,7 +52,7 @@
         icon="pi pi-search"
         class="p-button-outlined !border-2 !border-green-600 !text-green-700 !bg-white hover:!bg-green-100 !transition !font-semibold !rounded-lg !px-6 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-green-400 !shadow-sm !w-full md:!w-auto"
       ></button>
-      
+
       <button
         pButton
         type="button"
@@ -154,19 +154,19 @@
 </div>
 
 <!-- Modal de Búsqueda Masiva (HTML/CSS simple) -->
-<div 
-  *ngIf="showMassiveSearchModal" 
+<div
+  *ngIf="showMassiveSearchModal"
   class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
   (click)="closeMassiveSearchModal()"
 >
-  <div 
+  <div
     class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-90vh overflow-y-auto"
     (click)="$event.stopPropagation()"
   >
     <!-- Header -->
     <div class="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
       <h2 class="text-xl font-bold">🔍 Búsqueda Masiva de IMEIs</h2>
-      <button 
+      <button
         (click)="closeMassiveSearchModal()"
         class="text-white hover:text-gray-200 text-2xl font-bold"
       >
@@ -176,7 +176,7 @@
 
     <!-- Content -->
     <div class="p-6 space-y-6">
-      
+
       <!-- Instrucciones -->
       <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
         <h4 class="text-blue-800 font-semibold mb-2">📋 Instrucciones:</h4>
@@ -206,7 +206,7 @@
         >
           Cancelar
         </button>
-        
+
         <button
           (click)="performMassiveSearch()"
           [disabled]="!massiveSearchText.trim() || massiveSearchLoading"
@@ -220,7 +220,7 @@
       <!-- Resultados -->
       <div *ngIf="massiveSearchResults" class="mt-6 border-t pt-6">
         <h4 class="text-lg font-semibold mb-4">📊 Resultados de la búsqueda:</h4>
-        
+
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <!-- IMEIs Encontrados -->
           <div class="bg-green-50 border border-green-200 rounded-lg p-4">
@@ -228,10 +228,20 @@
               ✅ Encontrados ({{ massiveSearchResults.found.length }})
             </h5>
             <div class="max-h-32 overflow-y-auto">
-              <div *ngFor="let result of massiveSearchResults.found" class="text-green-700 text-sm mb-1">
+              <div *ngFor="let result of massiveSearchResults.found" 
+                   class="text-sm mb-1"
+                   [class.text-green-700]="!result.isDuplicate"
+                   [class.text-red-700]="result.isDuplicate"
+                   [class.bg-red-50]="result.isDuplicate"
+                   [class.border-l-4]="result.isDuplicate"
+                   [class.border-red-500]="result.isDuplicate"
+                   [class.pl-2]="result.isDuplicate">
                 <span class="font-mono">{{ result.imei }}</span>
                 <span class="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
                   ID: {{ result.invoiceId }}
+                </span>
+                <span *ngIf="result.itemName" class="ml-2 px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">
+                  {{ result.itemName }}
                 </span>
               </div>
             </div>
@@ -267,7 +277,7 @@
           >
             ✅ Aplicar Filtro
           </button>
-          
+
           <button
             (click)="clearMassiveSearchFilter()"
             class="px-6 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded-lg transition"

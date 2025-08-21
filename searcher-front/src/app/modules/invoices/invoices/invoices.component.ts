@@ -296,49 +296,125 @@ export class InvoicesComponent implements OnInit {
 
     this.massiveSearchLoading = true;
     
-    // Obtener lista de IMEIs (separados por espacios, saltos de línea, etc.)
-    const imeis = this.massiveSearchText
-      .trim()
-      .split(/[\s\n\r,]+/)
-      .filter(imei => imei.trim() !== '')
-      .map(imei => imei.trim());
+    // Extraer IMEIs usando múltiples patrones y mantener tanto el original como el limpio
+    const allImeiData = [];
+    
+    // 1. Buscar números de exactamente 15 dígitos
+    const imeiRegex15 = /\b\d{15}\b/g;
+    let match15;
+    while ((match15 = imeiRegex15.exec(this.massiveSearchText)) !== null) {
+      allImeiData.push({
+        clean: match15[0],
+        original: match15[0]
+      });
+    }
+    
+    // 2. Buscar números de 16 dígitos
+    const imeiRegex16 = /\b\d{16}\b/g;
+    let match16;
+    while ((match16 = imeiRegex16.exec(this.massiveSearchText)) !== null) {
+      allImeiData.push({
+        clean: match16[0].substring(0, 15),
+        original: match16[0]
+      });
+    }
+    
+    // 3. Buscar patrones como "IMEI:123456789012345" o "IMEI 123456789012345"
+    const imeiWithPrefixRegex = /(?:IMEI\s*:?\s*)(\d{15,16})/gi;
+    let match;
+    while ((match = imeiWithPrefixRegex.exec(this.massiveSearchText)) !== null) {
+      allImeiData.push({
+        clean: match[1].substring(0, 15),
+        original: match[0]
+      });
+    }
+    
+    // 4. Buscar patrones como "IMEI865991076768229" (IMEI pegado sin separación)
+    const imeiDirectRegex = /IMEI(\d{15,16})/gi;
+    let directMatch;
+    while ((directMatch = imeiDirectRegex.exec(this.massiveSearchText)) !== null) {
+      allImeiData.push({
+        clean: directMatch[1].substring(0, 15),
+        original: directMatch[0]
+      });
+    }
+    
+    // Eliminar duplicados basado en el IMEI limpio
+    const uniqueImeis = new Map();
+    allImeiData.forEach(item => {
+      if (!uniqueImeis.has(item.clean)) {
+        uniqueImeis.set(item.clean, item);
+      }
+    });
+    
+    const imeiDataArray = Array.from(uniqueImeis.values());
 
-    const foundImeis: { imei: string, invoiceId: string }[] = [];
+    const foundImeis: any[] = [];
     const notFoundImeis: string[] = [];
     const matchingInvoices: any[] = [];
 
     // Buscar cada IMEI en todas las facturas
-    imeis.forEach(imei => {
+    imeiDataArray.forEach(imeiData => {
       let found = false;
       
       for (const invoice of this.allInvoices) {
         let hasImei = false;
+        let itemName = '';
         
-        // Preparar regex para búsqueda
-        const imeiLower = imei.toLowerCase();
-        const regex = new RegExp('\\b' + imeiLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+        // Crear múltiples patrones de búsqueda para el IMEI
+        const searchPatterns = [
+          imeiData.clean,           // IMEI limpio: 865991076768229
+          imeiData.original,        // Formato original: IMEI865991076768229
+          `IMEI${imeiData.clean}`,  // Con prefijo IMEI
+          `IMEI:${imeiData.clean}`, // Con prefijo IMEI:
+          `IMEI ${imeiData.clean}`  // Con prefijo IMEI (espacio)
+        ];
         
-        // Buscar en anotaciones de la factura
-        const anotation = invoice.anotation?.toLowerCase() || '';
-        hasImei = regex.test(anotation);
-        
-        if (!hasImei) {
-          if (this.selectedInvoiceType === 'sales') {
-            // Buscar en items de ventas
-            hasImei = invoice.items?.some((item: any) => {
-              const description = item.description?.toLowerCase() || '';
-              const observations = item.observations?.toLowerCase() || '';
+        // Buscar con todos los patrones
+        for (const pattern of searchPatterns) {
+          const patternLower = pattern.toLowerCase();
+          const regex = new RegExp('\\b' + patternLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+          
+          // Buscar en anotaciones de la factura
+          const anotation = invoice.anotation?.toLowerCase() || '';
+          hasImei = regex.test(anotation) || anotation.includes(patternLower);
+          
+          // Si lo encuentra en anotaciones y es una venta, tomar el primer item
+          if (hasImei && this.selectedInvoiceType === 'sales') {
+            if (invoice.items && invoice.items.length > 0) {
+              itemName = invoice.items[0].name || '';
+            }
+            break;
+          }
+          
+          if (!hasImei) {
+            if (this.selectedInvoiceType === 'sales') {
+              // Buscar en items de ventas
+              const foundItem = invoice.items?.find((item: any) => {
+                const description = item.description?.toLowerCase() || '';
+                const observations = item.observations?.toLowerCase() || '';
+                
+                return regex.test(description) || regex.test(observations) || 
+                       description.includes(patternLower) || observations.includes(patternLower);
+              });
               
-              return regex.test(description) || regex.test(observations);
-            });
-          } else {
-            // Buscar en items de compras
-            hasImei = invoice.purchases?.items?.some((item: any) => {
-              const description = item.description?.toLowerCase() || '';
-              const observations = item.observations?.toLowerCase() || '';
+              if (foundItem) {
+                hasImei = true;
+                itemName = foundItem.name || '';
+                break;
+              }
+            } else {
+              // Buscar en items de compras
+              hasImei = invoice.purchases?.items?.some((item: any) => {
+                const description = item.description?.toLowerCase() || '';
+                const observations = item.observations?.toLowerCase() || '';
+                
+                return regex.test(description) || regex.test(observations) || 
+                       description.includes(patternLower) || observations.includes(patternLower);
+              });
               
-              return regex.test(description) || regex.test(observations);
-            });
+              if (hasImei) break;
+            }
           }
         }
 
@@ -346,11 +422,17 @@ export class InvoicesComponent implements OnInit {
           found = true;
           const invoiceId = invoice.numberTemplate?.number || invoice.id;
           
-          // Agregar IMEI con su ID de factura
-          foundImeis.push({
-            imei: imei,
+          // Agregar IMEI con su ID de factura y nombre del item (solo para sales)
+          const result: any = {
+            imei: imeiData.clean,
             invoiceId: invoiceId
-          });
+          };
+          
+          if (this.selectedInvoiceType === 'sales' && itemName) {
+            result.itemName = itemName;
+          }
+          
+          foundImeis.push(result);
           
           if (!matchingInvoices.find(inv => inv.id === invoice.id)) {
             matchingInvoices.push(invoice);
@@ -359,16 +441,28 @@ export class InvoicesComponent implements OnInit {
       }
 
       if (!found) {
-        notFoundImeis.push(imei);
+        notFoundImeis.push(imeiData.clean);
       }
     });
 
     this.massiveSearchResults = {
-      totalSearched: imeis.length,
+      totalSearched: imeiDataArray.length,
       found: foundImeis,
       notFound: notFoundImeis,
       matchingInvoices: matchingInvoices
     };
+
+    // Detectar IMEIs duplicados (que aparecen en múltiples facturas)
+    const imeiCounts = new Map<string, number>();
+    foundImeis.forEach(result => {
+      const count = imeiCounts.get(result.imei) || 0;
+      imeiCounts.set(result.imei, count + 1);
+    });
+
+    // Marcar los IMEIs que aparecen más de una vez como duplicados
+    foundImeis.forEach(result => {
+      result.isDuplicate = (imeiCounts.get(result.imei) || 0) > 1;
+    });
 
     this.massiveSearchLoading = false;
   }
