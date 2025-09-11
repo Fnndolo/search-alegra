@@ -3,6 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { InvoicesModule } from './invoices/invoices.module';
 import { BillsModule } from './bills/bills.module';
+import { ScheduledTasksModule } from './scheduled-tasks/scheduled-tasks.module';
 import { DataStorageModule } from './data-storage/data-storage.module';
 import { DatabaseCleanupController } from './database-cleanup.controller';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -31,7 +32,9 @@ import { SyncStatus } from './entities/sync-status.entity';
     TypeOrmModule.forFeature([Invoice, Bill, SyncStatus]),
     InvoicesModule, 
     BillsModule,
-    DataStorageModule
+    DataStorageModule,
+    ScheduledTasksModule,
+    ScheduleModule.forRoot()
   ],
   controllers: [AppController, DatabaseCleanupController],
   providers: [AppService],

@@ -25,28 +25,16 @@ export class InvoicesController {
       }
 
       const result = await this.invoicesService.getCachedInvoices(store);
-      this.logger.log(`✅ Invoices retrieved for ${store}: ${result?.data?.length || 0} items`);
-      this.logger.log(`📊 Result structure:`, {
-        updating: result?.updating,
-        progress: result?.progress,
-        fullyLoaded: result?.fullyLoaded,
-        dataLength: result?.data?.length,
-        store: result?.store,
-        total: result?.total
-      });
       
       // Si no hay datos, intentar cargar
       if (result.data.length === 0 && !result.updating) {
-        this.logger.log(`🔄 No data found for ${store}, triggering initial load...`);
         // Forzar carga inicial en el background
         this.invoicesService.updateInvoicesManually(store).catch(error => {
-          this.logger.error(`Error in background load for ${store}:`, error);
         });
       }
       
       return result;
     } catch (error) {
-      this.logger.error(`❌ Error getting invoices for store ${store}:`, error);
       if (error instanceof BadRequestException) {
         throw error;
       }

@@ -500,6 +500,26 @@ export class BillsService {
   }
 
   /**
+   * Carga todas las bills desde la API
+   */
+  async loadAllBillsFromAPI(store: string): Promise<void> {
+    try {
+      const bills = await this.fetchAllBills(store);
+      const storeCache = this.getStoreCache(store);
+      storeCache.billsCache = bills;
+      storeCache.progress = bills.length;
+      if (bills.length > 0) {
+        storeCache.lastBillDatetime = bills[0].datetime || bills[0].date;
+      }
+      storeCache.fullyLoaded = true;
+      storeCache.updating = false;
+    } catch (error) {
+      this.logger.error(`Error cargando todas las bills para ${store}`, error);
+      throw error;
+    }
+  }
+
+  /**
    * Actualiza las bills manualmente para una tienda específica.
    */
   async updateBillsManually(store: string) {

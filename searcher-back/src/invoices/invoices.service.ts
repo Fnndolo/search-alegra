@@ -135,7 +135,7 @@ export class InvoicesService {
   /**
    * Carga todas las facturas desde la API
    */
-  private async loadAllInvoicesFromAPI(store: string): Promise<void> {
+  async loadAllInvoicesFromAPI(store: string): Promise<void> {
     const credentials = this.storeCredentialsService.getCredentials(store);
     const syncStatus = await this.getSyncStatus(store);
     

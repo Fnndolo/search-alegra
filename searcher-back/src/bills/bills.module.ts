@@ -11,6 +11,6 @@ import { SyncStatus } from '../entities/sync-status.entity';
   imports: [TypeOrmModule.forFeature([Bill, SyncStatus])],
   controllers: [BillsController],
   providers: [BillsService, BillsDbService, StoreCredentialsService],
-  exports: [BillsDbService]
+  exports: [BillsService, BillsDbService]
 })
 export class BillsModule {}

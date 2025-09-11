@@ -24,9 +24,9 @@ export class StoreCredentialsService {
     });
 
     this.storeCredentials.set('medellin', {
-      apiKey: (this.configService.get<string>('MEDELLIN_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
-      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_MEDELLIN') || this.configService.get<string>('ALEGRA_API_URL')) as string,
-      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_MEDELLIN') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
+      apiKey: (this.configService.get<string>('ALEGRA_API_KEY')) as string,
+      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL')) as string,
+      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
     });
 
     this.storeCredentials.set('armenia', {

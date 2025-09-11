@@ -222,20 +222,39 @@ export class InvoicesService {
    * Guarda las facturas en la base de datos
    */
   private async saveInvoicesToDB(store: string, invoices: any[]): Promise<void> {
-    const invoiceEntities = invoices.map(invoiceData => {
-      const invoice = new Invoice();
-      invoice.id = invoiceData.id;
-      invoice.store = store;
-      invoice.data = invoiceData;
-      invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
-      invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-      return invoice;
-    });
+    this.logger.log(`💾 Guardando ${invoices.length} facturas para ${store}`);
+    
+    for (const invoiceData of invoices) {
+      try {
+        // Verificar si ya existe
+        const existingInvoice = await this.invoiceRepository.findOne({
+          where: { id: invoiceData.id, store: store }
+        });
 
-    // Usar upsert para evitar duplicados
-    await this.invoiceRepository.save(invoiceEntities, { 
-      chunk: 100 // Procesar en chunks para mejor rendimiento
-    });
+        if (existingInvoice) {
+          // Actualizar la factura existente
+          existingInvoice.data = invoiceData;
+          existingInvoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
+          existingInvoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
+          await this.invoiceRepository.save(existingInvoice);
+          this.logger.log(`🔄 Factura ${invoiceData.id} actualizada para ${store}`);
+        } else {
+          // Crear nueva factura
+          const invoice = new Invoice();
+          invoice.id = invoiceData.id;
+          invoice.store = store;
+          invoice.data = invoiceData;
+          invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
+          invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
+          await this.invoiceRepository.save(invoice);
+          this.logger.log(`✅ Factura ${invoiceData.id} creada para ${store}`);
+        }
+      } catch (error) {
+        this.logger.error(`❌ Error guardando factura ${invoiceData.id} para ${store}:`, error.message);
+      }
+    }
+    
+    this.logger.log(`🎉 Proceso de guardado completado para ${store}`);
   }
 
   /**
@@ -243,16 +262,10 @@ export class InvoicesService {
    */
   async updateInvoicesManually(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
+    console.log('Empezando a actualizar...');
     
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una actualización en progreso para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-      return;
-    }
-
-    // Si no hay datos, hacer carga completa
-    if (syncStatus.totalRecords === 0) {
-      this.logger.log(`No hay datos en caché para ${this.storeCredentialsService.getStoreDisplayName(store)}. Iniciando carga completa...`);
-      await this.initializeDataLoad(store);
       return;
     }
 
@@ -275,6 +288,10 @@ export class InvoicesService {
   private async fetchNewInvoices(store: string): Promise<void> {
     const credentials = this.storeCredentialsService.getCredentials(store);
     
+    // 🔍 LOG: Verificar credenciales
+    this.logger.log(`🔑 Iniciando búsqueda de facturas nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    this.logger.log(`🔗 URL: ${credentials.invoicesApiUrl}`);
+    
     // Obtener la última factura de la base de datos
     const lastInvoice = await this.invoiceRepository.findOne({
       where: { store },
@@ -282,71 +299,145 @@ export class InvoicesService {
     });
 
     if (!lastInvoice) {
-      this.logger.log(`No hay facturas previas para ${store}, haciendo carga completa`);
+      this.logger.log(`❌ No hay facturas previas para ${store}, haciendo carga completa`);
       await this.loadAllInvoicesFromAPI(store);
       return;
     }
+
+    // 🔍 LOG: Información de la última factura
+    this.logger.log(`📄 Última factura encontrada para ${store}:`);
+    this.logger.log(`   - ID: ${lastInvoice.id}`);
+    this.logger.log(`   - DateTime: ${lastInvoice.datetime}`);
+    this.logger.log(`   - Date: ${lastInvoice.date}`);
 
     const lastDate = lastInvoice.datetime ? 
       lastInvoice.datetime.toISOString().split('T')[0] : 
       (lastInvoice.date ? lastInvoice.date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
 
-    this.logger.log(`Buscando facturas nuevas desde ${lastDate} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    this.logger.log(`📅 Fecha de referencia calculada: ${lastDate}`);
+    this.logger.log(`🔍 Buscando facturas nuevas desde ${lastDate} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
 
     let newInvoices: any[] = [];
 
     try {
+      // 🔍 LOG: Parámetros del primer request
+      const firstRequestParams = {
+        start: 0,
+        limit: 100, // Límite más alto para facturas nuevas
+        metadata: true,
+        order_direction: 'DESC',
+        date_after: lastDate,
+      };
+      this.logger.log(`📡 Primer request (date_after) para ${store}:`, firstRequestParams);
+
       // Buscar facturas posteriores a la última fecha
       const response = await this.makeRequestWithRetry(() =>
         axios.get(credentials.invoicesApiUrl, {
-          params: {
-            start: 0,
-            limit: 100, // Límite más alto para facturas nuevas
-            metadata: true,
-            order_direction: 'DESC',
-            date_after: lastDate,
-          },
+          params: firstRequestParams,
           headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
         })
       );
 
+      // 🔍 LOG: Respuesta del primer request
+      this.logger.log(`📊 Respuesta primer request para ${store}:`);
+      this.logger.log(`   - Status: ${response.status}`);
+      this.logger.log(`   - Total metadata: ${response.data.metadata?.total || 'N/A'}`);
+      this.logger.log(`   - Datos recibidos: ${response.data.data?.length || 0}`);
+
       newInvoices = response.data.data || [];
+
+      // 🔍 LOG: Facturas encontradas en primer request
+      if (newInvoices.length > 0) {
+        this.logger.log(`✅ Encontradas ${newInvoices.length} facturas con date_after para ${store}`);
+        newInvoices.forEach((inv, idx) => {
+          if (idx < 3) { // Solo mostrar las primeras 3
+            this.logger.log(`   - Factura ${idx + 1}: ID=${inv.id}, Date=${inv.date}, DateTime=${inv.datetime}`);
+          }
+        });
+      } else {
+        this.logger.log(`⚠️  No se encontraron facturas con date_after para ${store}`);
+      }
+
+      // 🔍 LOG: Parámetros del segundo request
+      const secondRequestParams = {
+        start: 0,
+        limit: 100,
+        metadata: false,
+        order_direction: 'DESC',
+        date: lastDate,
+      };
+      this.logger.log(`📡 Segundo request (same day) para ${store}:`, secondRequestParams);
 
       // También buscar en el mismo día por si hay nuevas facturas
       const sameDayResponse = await this.makeRequestWithRetry(() =>
         axios.get(credentials.invoicesApiUrl, {
-          params: {
-            start: 0,
-            limit: 100,
-            metadata: false,
-            order_direction: 'DESC',
-            date: lastDate,
-          },
+          params: secondRequestParams,
           headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
         })
       );
 
-      const sameDayInvoices = (sameDayResponse.data.data || []).filter((inv: any) =>
-        inv.datetime && lastInvoice.datetime && 
-        new Date(inv.datetime) > lastInvoice.datetime
-      );
+      // 🔍 LOG: Respuesta del segundo request
+      this.logger.log(`📊 Respuesta segundo request para ${store}:`);
+      this.logger.log(`   - Status: ${sameDayResponse.status}`);
+      this.logger.log(`   - Datos recibidos: ${sameDayResponse.data.data?.length || 0}`);
+
+      const sameDayInvoicesRaw = sameDayResponse.data.data || [];
+      
+      // 🔍 LOG: Facturas del mismo día antes de filtrar
+      this.logger.log(`📋 Facturas del mismo día (antes de filtrar) para ${store}: ${sameDayInvoicesRaw.length}`);
+
+      const sameDayInvoices = sameDayInvoicesRaw.filter((inv: any) => {
+        const hasDateTime = inv.datetime && lastInvoice.datetime;
+        if (hasDateTime) {
+          const invoiceDateTime = new Date(inv.datetime);
+          const lastDateTime = lastInvoice.datetime as Date; // Type assertion ya que verificamos que existe
+          const isNewer = invoiceDateTime > lastDateTime;
+          
+          // 🔍 LOG: Proceso de filtrado
+          this.logger.log(`🔍 Comparando factura ${inv.id}: ${inv.datetime} > ${lastInvoice.datetime} = ${isNewer}`);
+          return isNewer;
+        }
+        return false;
+      });
+
+      // 🔍 LOG: Facturas del mismo día después de filtrar
+      this.logger.log(`✅ Facturas del mismo día (después de filtrar) para ${store}: ${sameDayInvoices.length}`);
 
       newInvoices = [...newInvoices, ...sameDayInvoices];
 
       // Filtrar duplicados
+      const beforeDedup = newInvoices.length;
       newInvoices = newInvoices.filter((inv, index, arr) =>
         arr.findIndex(i => i.id === inv.id) === index
       );
+      const afterDedup = newInvoices.length;
+
+      // 🔍 LOG: Resultado final
+      this.logger.log(`🔄 Duplicados removidos: ${beforeDedup - afterDedup}`);
+      this.logger.log(`📊 Total facturas nuevas finales para ${store}: ${newInvoices.length}`);
 
       if (newInvoices.length > 0) {
+        // 🔍 LOG: Facturas que se van a guardar
+        this.logger.log(`💾 Guardando ${newInvoices.length} facturas nuevas para ${store}:`);
+        newInvoices.forEach((inv, idx) => {
+          if (idx < 5) { // Mostrar las primeras 5
+            this.logger.log(`   - ${idx + 1}. ID=${inv.id}, Date=${inv.date}, DateTime=${inv.datetime}`);
+          }
+        });
+
         await this.saveInvoicesToDB(store, newInvoices);
         this.logger.log(`✅ Se agregaron ${newInvoices.length} facturas nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       } else {
-        this.logger.log(`No se encontraron facturas nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+        this.logger.log(`❌ No se encontraron facturas nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       }
 
     } catch (error) {
-      this.logger.error(`Error obteniendo facturas nuevas para ${store}`, error);
+      // 🔍 LOG: Error detallado
+      this.logger.error(`❌ Error detallado obteniendo facturas nuevas para ${store}:`);
+      this.logger.error(`   - Message: ${error.message}`);
+      this.logger.error(`   - Status: ${error.response?.status}`);
+      this.logger.error(`   - StatusText: ${error.response?.statusText}`);
+      this.logger.error(`   - Data: ${JSON.stringify(error.response?.data)}`);
       throw error;
     }
   }
