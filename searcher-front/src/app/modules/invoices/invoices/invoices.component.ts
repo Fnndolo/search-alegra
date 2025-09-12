@@ -89,7 +89,7 @@ export class InvoicesComponent implements OnInit {
         this.allInvoices = res.data || [];
         this.totalRecords = this.allInvoices.length;
         this.loading = false;
-        
+
         // Aplicar filtro automáticamente si hay texto de búsqueda
         if (this.filterValue && this.filterValue.trim() !== '') {
           this.filterInvoicesLocal();
@@ -115,7 +115,7 @@ export class InvoicesComponent implements OnInit {
         this.allInvoices = res.data || [];
         this.totalRecords = this.allInvoices.length;
         this.loading = false;
-        
+
         // Aplicar filtro automáticamente si hay texto de búsqueda
         if (this.filterValue && this.filterValue.trim() !== '') {
           this.filterInvoicesLocal();
@@ -159,7 +159,7 @@ export class InvoicesComponent implements OnInit {
     let filtered = this.allInvoices;
     // Usar trim() para ignorar espacios al inicio y final
     const trimmedFilter = this.filterValue?.trim() || '';
-    
+
     if (trimmedFilter !== '') {
       const filterLower = trimmedFilter.toLowerCase();
 
@@ -237,7 +237,7 @@ export class InvoicesComponent implements OnInit {
         this.allInvoices = res.data;
         this.totalRecords = this.allInvoices.length;
         this.loading = false;
-        
+
         // Aplicar filtro automáticamente si hay texto de búsqueda
         if (this.filterValue && this.filterValue.trim() !== '') {
           this.filterInvoicesLocal();
@@ -252,7 +252,7 @@ export class InvoicesComponent implements OnInit {
         this.allInvoices = res.data;
         this.totalRecords = this.allInvoices.length;
         this.loading = false;
-        
+
         // Aplicar filtro automáticamente si hay texto de búsqueda
         if (this.filterValue && this.filterValue.trim() !== '') {
           this.filterInvoicesLocal();
@@ -270,11 +270,11 @@ export class InvoicesComponent implements OnInit {
   }
 
   goToAlegra(id: string) {
-  window.open(`https://app.alegra.com/invoice/view/id/${id}`, '_blank');
-}
+    window.open(`https://app.alegra.com/invoice/view/id/${id}`, '_blank');
+  }
   goToAlegraBills(id: string) {
     window.open(`https://app.alegra.com/bill/view/id/${id}`, '_blank');
-}
+  }
 
   // Métodos para búsqueda masiva
   openMassiveSearchModal() {
@@ -295,10 +295,10 @@ export class InvoicesComponent implements OnInit {
     }
 
     this.massiveSearchLoading = true;
-    
+
     // Extraer IMEIs usando múltiples patrones y mantener tanto el original como el limpio
     const allImeiData = [];
-    
+
     // 1. Buscar números de exactamente 15 dígitos
     const imeiRegex15 = /\b\d{15}\b/g;
     let match15;
@@ -308,7 +308,7 @@ export class InvoicesComponent implements OnInit {
         original: match15[0]
       });
     }
-    
+
     // 2. Buscar números de 16 dígitos
     const imeiRegex16 = /\b\d{16}\b/g;
     let match16;
@@ -318,7 +318,7 @@ export class InvoicesComponent implements OnInit {
         original: match16[0]
       });
     }
-    
+
     // 3. Buscar patrones como "IMEI:123456789012345" o "IMEI 123456789012345"
     const imeiWithPrefixRegex = /(?:IMEI\s*:?\s*)(\d{15,16})/gi;
     let match;
@@ -328,7 +328,7 @@ export class InvoicesComponent implements OnInit {
         original: match[0]
       });
     }
-    
+
     // 4. Buscar patrones como "IMEI865991076768229" (IMEI pegado sin separación)
     const imeiDirectRegex = /IMEI(\d{15,16})/gi;
     let directMatch;
@@ -338,7 +338,7 @@ export class InvoicesComponent implements OnInit {
         original: directMatch[0]
       });
     }
-    
+
     // Eliminar duplicados basado en el IMEI limpio
     const uniqueImeis = new Map();
     allImeiData.forEach(item => {
@@ -346,7 +346,7 @@ export class InvoicesComponent implements OnInit {
         uniqueImeis.set(item.clean, item);
       }
     });
-    
+
     const imeiDataArray = Array.from(uniqueImeis.values());
 
     const foundImeis: any[] = [];
@@ -356,11 +356,11 @@ export class InvoicesComponent implements OnInit {
     // Buscar cada IMEI en todas las facturas
     imeiDataArray.forEach(imeiData => {
       let found = false;
-      
+
       for (const invoice of this.allInvoices) {
         let hasImei = false;
         let itemName = '';
-        
+
         // Crear múltiples patrones de búsqueda para el IMEI
         const searchPatterns = [
           imeiData.clean,           // IMEI limpio: 865991076768229
@@ -369,16 +369,16 @@ export class InvoicesComponent implements OnInit {
           `IMEI:${imeiData.clean}`, // Con prefijo IMEI:
           `IMEI ${imeiData.clean}`  // Con prefijo IMEI (espacio)
         ];
-        
+
         // Buscar con todos los patrones
         for (const pattern of searchPatterns) {
           const patternLower = pattern.toLowerCase();
           const regex = new RegExp('\\b' + patternLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
-          
+
           // Buscar en anotaciones de la factura
           const anotation = invoice.anotation?.toLowerCase() || '';
           hasImei = regex.test(anotation) || anotation.includes(patternLower);
-          
+
           // Si lo encuentra en anotaciones y es una venta, tomar el primer item
           if (hasImei && this.selectedInvoiceType === 'sales') {
             if (invoice.items && invoice.items.length > 0) {
@@ -386,18 +386,18 @@ export class InvoicesComponent implements OnInit {
             }
             break;
           }
-          
+
           if (!hasImei) {
             if (this.selectedInvoiceType === 'sales') {
               // Buscar en items de ventas
               const foundItem = invoice.items?.find((item: any) => {
                 const description = item.description?.toLowerCase() || '';
                 const observations = item.observations?.toLowerCase() || '';
-                
-                return regex.test(description) || regex.test(observations) || 
-                       description.includes(patternLower) || observations.includes(patternLower);
+
+                return regex.test(description) || regex.test(observations) ||
+                  description.includes(patternLower) || observations.includes(patternLower);
               });
-              
+
               if (foundItem) {
                 hasImei = true;
                 itemName = foundItem.name || '';
@@ -408,11 +408,11 @@ export class InvoicesComponent implements OnInit {
               hasImei = invoice.purchases?.items?.some((item: any) => {
                 const description = item.description?.toLowerCase() || '';
                 const observations = item.observations?.toLowerCase() || '';
-                
-                return regex.test(description) || regex.test(observations) || 
-                       description.includes(patternLower) || observations.includes(patternLower);
+
+                return regex.test(description) || regex.test(observations) ||
+                  description.includes(patternLower) || observations.includes(patternLower);
               });
-              
+
               if (hasImei) break;
             }
           }
@@ -421,19 +421,19 @@ export class InvoicesComponent implements OnInit {
         if (hasImei) {
           found = true;
           const invoiceId = invoice.numberTemplate?.number || invoice.id;
-          
+
           // Agregar IMEI con su ID de factura y nombre del item (solo para sales)
           const result: any = {
             imei: imeiData.clean,
             invoiceId: invoiceId
           };
-          
+
           if (this.selectedInvoiceType === 'sales' && itemName) {
             result.itemName = itemName;
           }
-          
+
           foundImeis.push(result);
-          
+
           if (!matchingInvoices.find(inv => inv.id === invoice.id)) {
             matchingInvoices.push(invoice);
           }
