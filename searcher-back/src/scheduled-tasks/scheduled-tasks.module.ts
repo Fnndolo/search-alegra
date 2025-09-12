@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduledTasksService } from './scheduled-tasks.service';
+import { ScheduledTasksController } from './scheduled-tasks.controller';
 import { Invoice } from '../entities/invoice.entity';
 import { Bill } from '../entities/bill.entity';
 import { InvoicesModule } from '../invoices/invoices.module';
@@ -14,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
     InvoicesModule,
     BillsModule,
   ],
+  controllers: [ScheduledTasksController],
   providers: [
     ScheduledTasksService, 
     StoreCredentialsService,

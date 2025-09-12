@@ -26,20 +26,24 @@ export class ScheduledTasksService {
   }
 
   private initScheduledTasks() {
-    // Programar para las 13:00 hora Colombia (18:00 UTC)
-    cron.schedule('0 18 * * *', () => {
+    // Programar para las 13:00 hora Colombia
+    cron.schedule('0 13 * * *', () => {
       this.logger.log('Iniciando sincronización programada de las 13:00');
       this.syncAllData();
+    }, {
+      timezone: "America/Bogota"
     });
 
-    // Programar para las 20:00 hora Colombia (01:00 UTC del día siguiente)
-    cron.schedule('0 1 * * *', () => {
+    // Programar para las 20:00 hora Colombia
+    cron.schedule('0 20 * * *', () => {
       this.logger.log('Iniciando sincronización programada de las 20:00');
       this.syncAllData();
+    }, {
+      timezone: "America/Bogota"
     });
   }
 
-  private async syncAllData() {
+  public async syncAllData() {
     try {
       const stores = this.storeCredentialsService.getAllValidStores();
       
