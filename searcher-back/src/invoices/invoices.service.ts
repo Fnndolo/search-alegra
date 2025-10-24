@@ -222,20 +222,29 @@ export class InvoicesService {
    * Guarda las facturas en la base de datos
    */
   private async saveInvoicesToDB(store: string, invoices: any[]): Promise<void> {
-    const invoiceEntities = invoices.map(invoiceData => {
-      const invoice = new Invoice();
-      invoice.id = invoiceData.id;
-      invoice.store = store;
-      invoice.data = invoiceData;
-      invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
-      invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-      return invoice;
-    });
+    for (const invoiceData of invoices) {
+      // Buscar si ya existe
+      const existingInvoice = await this.invoiceRepository.findOne({
+        where: { id: invoiceData.id, store }
+      });
 
-    // Usar upsert para evitar duplicados
-    await this.invoiceRepository.save(invoiceEntities, { 
-      chunk: 100 // Procesar en chunks para mejor rendimiento
-    });
+      if (existingInvoice) {
+        // Actualizar
+        existingInvoice.data = invoiceData;
+        existingInvoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
+        existingInvoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
+        await this.invoiceRepository.save(existingInvoice);
+      } else {
+        // Crear nuevo
+        const invoice = new Invoice();
+        invoice.id = invoiceData.id;
+        invoice.store = store;
+        invoice.data = invoiceData;
+        invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
+        invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
+        await this.invoiceRepository.save(invoice);
+      }
+    }
   }
 
   /**

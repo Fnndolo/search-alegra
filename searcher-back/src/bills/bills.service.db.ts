@@ -271,21 +271,29 @@ export class BillsDbService {
    * Guarda las bills en la base de datos
    */
   private async saveBillsToDB(store: string, bills: any[]): Promise<void> {
-    const billEntities = bills.map(billData => {
-      const bill = new Bill();
-      bill.id = billData.id;
-      bill.store = store;
-      bill.data = billData;
-      // Las bills solo tienen 'date', no 'datetime'
-      bill.datetime = null;
-      bill.date = billData.date ? new Date(billData.date) : null;
-      return bill;
-    });
+    for (const billData of bills) {
+      // Buscar si ya existe
+      const existingBill = await this.billRepository.findOne({
+        where: { id: billData.id, store }
+      });
 
-    // Usar upsert para evitar duplicados
-    await this.billRepository.save(billEntities, { 
-      chunk: 100 // Procesar en chunks para mejor rendimiento
-    });
+      if (existingBill) {
+        // Actualizar
+        existingBill.data = billData;
+        existingBill.datetime = null;
+        existingBill.date = billData.date ? new Date(billData.date) : null;
+        await this.billRepository.save(existingBill);
+      } else {
+        // Crear nuevo
+        const bill = new Bill();
+        bill.id = billData.id;
+        bill.store = store;
+        bill.data = billData;
+        bill.datetime = null;
+        bill.date = billData.date ? new Date(billData.date) : null;
+        await this.billRepository.save(bill);
+      }
+    }
   }
 
   /**
