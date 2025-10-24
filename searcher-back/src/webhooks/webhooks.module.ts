@@ -15,7 +15,7 @@ import { SharedModule } from '../shared/shared.module';
     BillsModule
   ],
   controllers: [WebhooksController],
-  providers: [WebhooksService, WebhooksInitializer],
+  providers: [WebhooksService], // Removido WebhooksInitializer temporalmente
   exports: [WebhooksService]
 })
 export class WebhooksModule {}
