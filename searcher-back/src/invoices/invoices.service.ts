@@ -221,8 +221,48 @@ export class InvoicesService {
   /**
    * Guarda las facturas en la base de datos
    */
+  /**
+   * Obtiene el medio de pago (nombre de la cuenta bancaria) desde la API de pagos
+   */
+  private async getPaymentMethod(store: string, invoiceData: any): Promise<string | null> {
+    try {
+      const credentials = this.storeCredentialsService.getCredentials(store);
+      
+      // Verificar si la factura tiene pagos
+      if (!invoiceData.payments || invoiceData.payments.length === 0) {
+        return null;
+      }
+
+      // Obtener el ID del primer pago
+      const paymentId = invoiceData.payments[0].id;
+      
+      if (!paymentId) {
+        return null;
+      }
+
+      // Llamar a la API de pagos
+      const response = await this.makeRequestWithRetry(() =>
+        axios.get(`https://api.alegra.com/api/v1/payments/${paymentId}`, {
+          headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
+        })
+      );
+
+      const paymentData = response.data;
+      
+      // Retornar el nombre de la cuenta bancaria
+      return paymentData?.bankAccount?.name || null;
+      
+    } catch (error) {
+      this.logger.warn(`Error obteniendo medio de pago para factura ${invoiceData.id}:`, error.message);
+      return null;
+    }
+  }
+
   private async saveInvoicesToDB(store: string, invoices: any[]): Promise<void> {
     for (const invoiceData of invoices) {
+      // Obtener el medio de pago
+      const paymentMethod = await this.getPaymentMethod(store, invoiceData);
+      
       // Buscar si ya existe
       const existingInvoice = await this.invoiceRepository.findOne({
         where: { id: invoiceData.id, store }
@@ -233,6 +273,7 @@ export class InvoicesService {
         existingInvoice.data = invoiceData;
         existingInvoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         existingInvoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
+        existingInvoice.paymentMethod = paymentMethod;
         await this.invoiceRepository.save(existingInvoice);
       } else {
         // Crear nuevo
@@ -242,6 +283,7 @@ export class InvoicesService {
         invoice.data = invoiceData;
         invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
+        invoice.paymentMethod = paymentMethod;
         await this.invoiceRepository.save(invoice);
       }
     }
