@@ -463,4 +463,36 @@ export class BillsDbService {
       await this.syncStatusRepository.save(syncStatus);
     }
   }
+
+  /**
+   * Actualiza una cuenta por pagar individual por su ID
+   */
+  async updateSingleBill(store: string, billId: string): Promise<void> {
+    this.logger.log(`Actualizando cuenta por pagar ${billId} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    
+    try {
+      const credentials = this.storeCredentialsService.getCredentials(store);
+      
+      // Obtener la bill de la API
+      const response = await this.makeRequestWithRetry(() =>
+        axios.get(`${credentials.billsApiUrl}/${billId}`, {
+          headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
+        })
+      );
+
+      const billData = response.data;
+      
+      if (!billData) {
+        throw new Error(`No se encontró la cuenta por pagar ${billId}`);
+      }
+
+      // Guardar o actualizar la bill
+      await this.saveBillsToDB(store, [billData]);
+      
+      this.logger.log(`✅ Cuenta por pagar ${billId} actualizada correctamente`);
+    } catch (error) {
+      this.logger.error(`Error actualizando cuenta por pagar ${billId} para ${store}`, error);
+      throw new ServiceUnavailableException(`Error actualizando cuenta por pagar: ${error.message}`);
+    }
+  }
 }

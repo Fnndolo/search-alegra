@@ -36,4 +36,11 @@ export class BillsService {
   async getCachedBills(store: string) {
     return await this.billsDbService.getCachedBills(store);
   }
+
+  /**
+   * Actualiza una cuenta por pagar individual por su ID
+   */
+  async updateSingleBill(store: string, billId: string): Promise<void> {
+    return await this.billsDbService.updateSingleBill(store, billId);
+  }
 }

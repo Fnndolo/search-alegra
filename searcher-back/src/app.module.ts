@@ -3,10 +3,10 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { InvoicesModule } from './invoices/invoices.module';
 import { BillsModule } from './bills/bills.module';
-import { ScheduledTasksModule } from './scheduled-tasks/scheduled-tasks.module';
+import { WebhooksModule } from './webhooks/webhooks.module';
 import { DataStorageModule } from './data-storage/data-storage.module';
 import { DatabaseCleanupController } from './database-cleanup.controller';
-import { ScheduleModule } from '@nestjs/schedule';
+
 import { ConfigModule } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Invoice } from './entities/invoice.entity';
@@ -33,8 +33,7 @@ import { SyncStatus } from './entities/sync-status.entity';
     InvoicesModule, 
     BillsModule,
     DataStorageModule,
-    ScheduledTasksModule,
-    ScheduleModule.forRoot()
+    WebhooksModule
   ],
   controllers: [AppController, DatabaseCleanupController],
   providers: [AppService],

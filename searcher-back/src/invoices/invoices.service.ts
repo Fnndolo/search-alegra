@@ -398,4 +398,36 @@ export class InvoicesService {
       await this.syncStatusRepository.save(syncStatus);
     }
   }
+
+  /**
+   * Actualiza una factura individual por su ID
+   */
+  async updateSingleInvoice(store: string, invoiceId: string): Promise<void> {
+    this.logger.log(`Actualizando factura ${invoiceId} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    
+    try {
+      const credentials = this.storeCredentialsService.getCredentials(store);
+      
+      // Obtener la factura de la API
+      const response = await this.makeRequestWithRetry(() =>
+        axios.get(`${credentials.invoicesApiUrl}/${invoiceId}`, {
+          headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
+        })
+      );
+
+      const invoiceData = response.data;
+      
+      if (!invoiceData) {
+        throw new Error(`No se encontró la factura ${invoiceId}`);
+      }
+
+      // Guardar o actualizar la factura
+      await this.saveInvoicesToDB(store, [invoiceData]);
+      
+      this.logger.log(`✅ Factura ${invoiceId} actualizada correctamente`);
+    } catch (error) {
+      this.logger.error(`Error actualizando factura ${invoiceId} para ${store}`, error);
+      throw new ServiceUnavailableException(`Error actualizando factura: ${error.message}`);
+    }
+  }
 }
