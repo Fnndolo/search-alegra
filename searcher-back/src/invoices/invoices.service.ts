@@ -102,7 +102,19 @@ export class InvoicesService {
       updating: syncStatus.isSyncing,
       progress: invoices.length,
       fullyLoaded: syncStatus.isFullyLoaded,
-      data: invoices.map(inv => inv.data), // Retornar solo los datos de las facturas
+      data: invoices.map(inv => {
+        const invoiceData = { ...inv.data };
+        
+        // Si tiene bankAccountName y payments, agregar bankAccount dentro de payments
+        if (inv.bankAccountName && invoiceData.payments && invoiceData.payments.length > 0) {
+          invoiceData.payments = invoiceData.payments.map(payment => ({
+            ...payment,
+            bankAccount: inv.bankAccountName
+          }));
+        }
+        
+        return invoiceData;
+      }),
       store: store,
       storeDisplayName: this.storeCredentialsService.getStoreDisplayName(store),
       total: syncStatus.totalRecords
@@ -273,7 +285,7 @@ export class InvoicesService {
         existingInvoice.data = invoiceData;
         existingInvoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         existingInvoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-        existingInvoice.paymentMethod = paymentMethod;
+        existingInvoice.bankAccountName = paymentMethod;
         await this.invoiceRepository.save(existingInvoice);
       } else {
         // Crear nuevo
@@ -283,7 +295,7 @@ export class InvoicesService {
         invoice.data = invoiceData;
         invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-        invoice.paymentMethod = paymentMethod;
+        invoice.bankAccountName = paymentMethod;
         await this.invoiceRepository.save(invoice);
       }
     }
@@ -481,4 +493,103 @@ export class InvoicesService {
       throw new ServiceUnavailableException(`Error actualizando factura: ${error.message}`);
     }
   }
+
+  /**
+   * Recarga TODAS las facturas desde cero con sus medios de pago
+   * Proceso optimizado:
+   * 1. Elimina todas las facturas existentes
+   * 2. Carga todas las facturas en lotes (rápido)
+   * 3. Actualiza los medios de pago en segundo plano (lento pero no bloquea)
+   */
+  async reloadAllWithPayments(store: string): Promise<void> {
+    this.logger.log(`🔄 Iniciando recarga completa con medios de pago para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    
+    const syncStatus = await this.getSyncStatus(store);
+    
+    if (syncStatus.isSyncing) {
+      this.logger.warn(`Ya hay una recarga en progreso para ${store}`);
+      return;
+    }
+
+    syncStatus.isSyncing = true;
+    await this.syncStatusRepository.save(syncStatus);
+
+    try {
+      // Paso 1: Eliminar todas las facturas
+      this.logger.log(`🗑️ Eliminando facturas existentes de ${store}...`);
+      await this.invoiceRepository.delete({ store });
+      
+      // Paso 2: Resetear sync status
+      syncStatus.totalRecords = 0;
+      syncStatus.isFullyLoaded = false;
+      await this.syncStatusRepository.save(syncStatus);
+      
+      // Paso 3: Cargar todas las facturas (sin medios de pago aún, rápido)
+      this.logger.log(`📥 Cargando todas las facturas...`);
+      await this.loadAllInvoicesFromAPI(store);
+      
+      // Paso 4: Actualizar medios de pago en segundo plano
+      this.logger.log(`💳 Actualizando medios de pago...`);
+      await this.updateAllPaymentMethods(store);
+      
+      this.logger.log(`✅ Recarga completa finalizada para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+      
+    } catch (error) {
+      this.logger.error(`Error en recarga completa para ${store}:`, error);
+      throw error;
+    } finally {
+      syncStatus.isSyncing = false;
+      await this.syncStatusRepository.save(syncStatus);
+    }
+  }
+
+  /**
+   * Actualiza los medios de pago de todas las facturas existentes
+   * Se ejecuta en lotes pequeños para no sobrecargar la API
+   */
+  private async updateAllPaymentMethods(store: string): Promise<void> {
+    const batchSize = 10; // Procesar 10 facturas a la vez
+    let processed = 0;
+    
+    // Obtener todas las facturas que tienen pagos
+    const allInvoices = await this.invoiceRepository.find({ 
+      where: { store },
+      order: { id: 'DESC' }
+    });
+    
+    this.logger.log(`📊 Total de facturas a procesar: ${allInvoices.length}`);
+    
+    for (let i = 0; i < allInvoices.length; i += batchSize) {
+      const batch = allInvoices.slice(i, i + batchSize);
+      
+      // Procesar este lote
+      await Promise.all(
+        batch.map(async (invoice) => {
+          try {
+            // Solo actualizar si tiene pagos en los datos
+            if (invoice.data?.payments && invoice.data.payments.length > 0) {
+              const paymentMethod = await this.getPaymentMethod(store, invoice.data);
+              if (paymentMethod) {
+                invoice.bankAccountName = paymentMethod;
+                await this.invoiceRepository.save(invoice);
+              }
+            }
+          } catch (error) {
+            this.logger.warn(`Error actualizando pago de factura ${invoice.id}:`, error.message);
+          }
+        })
+      );
+      
+      processed += batch.length;
+      this.logger.log(`💳 Progreso: ${processed}/${allInvoices.length} facturas procesadas`);
+      
+      // Pausa entre lotes para no saturar la API
+      if (i + batchSize < allInvoices.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+    
+    this.logger.log(`✅ Medios de pago actualizados para ${processed} facturas`);
+  }
 }
+

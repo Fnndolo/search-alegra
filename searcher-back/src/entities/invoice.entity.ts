@@ -19,7 +19,7 @@ export class Invoice {
   date: Date | null;
 
   @Column({ type: 'varchar', nullable: true })
-  paymentMethod: string | null; // Nombre del banco/cuenta del pago (ej: "ADELANTOS", "BANCOLOMBIA")
+  bankAccountName: string | null; // Nombre del banco/cuenta del pago (ej: "ADELANTOS", "BANCOLOMBIA")
 
   @CreateDateColumn()
   createdAt: Date;

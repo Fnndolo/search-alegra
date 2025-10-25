@@ -83,4 +83,25 @@ export class InvoicesController {
     await this.invoicesService.ensureFullDataPersistence(store);
     return { message: `Persistencia completa asegurada para facturas de ${store}` };
   }
+
+  @Get('reload-with-payments')
+  async reloadWithPayments(@Query('store') store?: string) {
+    if (!store) {
+      throw new BadRequestException('El parámetro "store" es requerido');
+    }
+
+    if (!this.storeCredentialsService.isValidStore(store)) {
+      throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    // Iniciar el proceso en background
+    this.invoicesService.reloadAllWithPayments(store).catch(error => {
+      this.logger.error(`Error recargando facturas con pagos para ${store}:`, error);
+    });
+
+    return { 
+      message: `Proceso de recarga iniciado para ${store}. Las facturas se están recargando con sus medios de pago.`,
+      status: 'processing'
+    };
+  }
 }
