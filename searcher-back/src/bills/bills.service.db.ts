@@ -109,10 +109,10 @@ export class BillsDbService {
       this.logger.log(`No se inicia carga: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}, isFullyLoaded=${syncStatus.isFullyLoaded}`);
     }
     
-    // Obtener las bills de la base de datos ordenadas por fecha descendente
+    // Obtener las bills de la base de datos ordenadas por ID descendente, luego por fecha
     const bills = await this.billRepository.find({
       where: { store },
-      order: { date: 'DESC', id: 'DESC' },
+      order: { id: 'DESC', date: 'DESC' },
     });
     
     return {

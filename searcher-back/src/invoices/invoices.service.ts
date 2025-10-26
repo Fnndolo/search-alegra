@@ -92,10 +92,10 @@ export class InvoicesService {
       });
     }
     
-    // Obtener las facturas de la base de datos ordenadas por fecha descendente
+    // Obtener las facturas de la base de datos ordenadas por ID descendente, luego por fecha
     const invoices = await this.invoiceRepository.find({
       where: { store },
-      order: { datetime: 'DESC', date: 'DESC', id: 'DESC' },
+      order: { id: 'DESC', datetime: 'DESC', date: 'DESC' },
     });
     
     return {
