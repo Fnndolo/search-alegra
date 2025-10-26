@@ -475,7 +475,7 @@ export class BillsDbService {
   /**
    * Actualiza una cuenta por pagar individual por su ID
    */
-  async updateSingleBill(store: string, billId: string): Promise<void> {
+  async updateSingleBill(store: string, billId: string): Promise<any> {
     this.logger.log(`Actualizando cuenta por pagar ${billId} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
     
     try {
@@ -498,9 +498,36 @@ export class BillsDbService {
       await this.saveBillsToDB(store, [billData]);
       
       this.logger.log(`✅ Cuenta por pagar ${billId} actualizada correctamente`);
+      
+      // Retornar la bill actualizada
+      return billData;
     } catch (error) {
       this.logger.error(`Error actualizando cuenta por pagar ${billId} para ${store}`, error);
       throw new ServiceUnavailableException(`Error actualizando cuenta por pagar: ${error.message}`);
+    }
+  }
+
+  /**
+   * Obtiene una cuenta por pagar por su ID desde la base de datos
+   */
+  async getBillById(store: string, billId: string): Promise<any> {
+    try {
+      const bill = await this.billRepository.findOne({
+        where: { 
+          store,
+          data: { id: billId } as any
+        }
+      });
+
+      if (!bill) {
+        return null;
+      }
+
+      // Retornar los datos de la bill
+      return bill.data;
+    } catch (error) {
+      this.logger.error(`Error obteniendo cuenta por pagar ${billId} para ${store}`, error);
+      return null;
     }
   }
 }

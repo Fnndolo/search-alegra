@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test WebSocket - Searcher Back</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .connected {
+            background: #4CAF50;
+            color: white;
+        }
+        .disconnected {
+            background: #f44336;
+            color: white;
+        }
+        .control-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #da190b;
+        }
+        .event-log {
+            max-height: 400px;
+            overflow-y: auto;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+        }
+        .event {
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #4CAF50;
+            background: white;
+            border-radius: 4px;
+        }
+        .event.invoice {
+            border-left-color: #2196F3;
+        }
+        .event.bill {
+            border-left-color: #FF9800;
+        }
+        .event.delete {
+            border-left-color: #f44336;
+        }
+        .event-time {
+            color: #999;
+            font-size: 12px;
+        }
+        .event-type {
+            font-weight: bold;
+            color: #333;
+            margin: 5px 0;
+        }
+        .event-data {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .rooms {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .room-badge {
+            padding: 8px 15px;
+            background: #e3f2fd;
+            border: 2px solid #2196F3;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #1976D2;
+        }
+        select {
+            padding: 8px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 WebSocket Test Client - Searcher Back</h1>
+        <div id="status" class="status disconnected">Desconectado</div>
+        
+        <h2>Configuración</h2>
+        <div>
+            <label>URL del servidor:</label>
+            <input type="text" id="serverUrl" value="http://localhost:8080" style="width: 300px; padding: 8px; margin: 10px 0;">
+        </div>
+        
+        <div class="control-panel">
+            <button onclick="connect()">Conectar</button>
+            <button onclick="disconnect()" class="danger">Desconectar</button>
+            <button onclick="clearEvents()">Limpiar Log</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Rooms Activos</h2>
+        <div class="rooms" id="activeRooms">
+            <span style="color: #999;">No hay rooms activos</span>
+        </div>
+
+        <h2>Unirse a un Room</h2>
+        <div style="margin: 10px 0;">
+            <select id="storeSelect">
+                <option value="pasto">Pasto</option>
+                <option value="medellin">Medellín</option>
+                <option value="armenia">Armenia</option>
+                <option value="pereira">Pereira</option>
+            </select>
+            <select id="typeSelect">
+                <option value="sales">Sales (Invoices)</option>
+                <option value="purchases">Purchases (Bills)</option>
+            </select>
+            <button onclick="joinRoom()">Unirse al Room</button>
+            <button onclick="leaveRoom()" class="danger">Salir del Room</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>📊 Event Log</h2>
+        <div class="event-log" id="eventLog">
+            <p style="color: #999; text-align: center;">Esperando eventos...</p>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        const joinedRooms = new Set();
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = 'status ' + (connected ? 'connected' : 'disconnected');
+            statusDiv.textContent = connected ? '✅ Conectado' : '❌ Desconectado';
+        }
+
+        function updateRooms() {
+            const roomsDiv = document.getElementById('activeRooms');
+            if (joinedRooms.size === 0) {
+                roomsDiv.innerHTML = '<span style="color: #999;">No hay rooms activos</span>';
+            } else {
+                roomsDiv.innerHTML = Array.from(joinedRooms)
+                    .map(room => `<div class="room-badge">${room}</div>`)
+                    .join('');
+            }
+        }
+
+        function connect() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            
+            if (socket && socket.connected) {
+                addEvent('system', 'Ya estás conectado');
+                return;
+            }
+
+            addEvent('system', `Conectando a ${serverUrl}...`);
+            
+            socket = io(serverUrl, {
+                transports: ['websocket', 'polling']
+            });
+
+            socket.on('connect', () => {
+                updateStatus(true);
+                addEvent('system', `Conectado con ID: ${socket.id}`);
+            });
+
+            socket.on('disconnect', () => {
+                updateStatus(false);
+                addEvent('system', 'Desconectado del servidor');
+                joinedRooms.clear();
+                updateRooms();
+            });
+
+            // Eventos de Invoice
+            socket.on('invoice:created', (data) => {
+                addEvent('invoice', 'Invoice Created', data);
+            });
+
+            socket.on('invoice:updated', (data) => {
+                addEvent('invoice', 'Invoice Updated', data);
+            });
+
+            socket.on('invoice:deleted', (data) => {
+                addEvent('invoice delete', 'Invoice Deleted', data);
+            });
+
+            // Eventos de Bill
+            socket.on('bill:created', (data) => {
+                addEvent('bill', 'Bill Created', data);
+            });
+
+            socket.on('bill:updated', (data) => {
+                addEvent('bill', 'Bill Updated', data);
+            });
+
+            socket.on('bill:deleted', (data) => {
+                addEvent('bill delete', 'Bill Deleted', data);
+            });
+
+            socket.on('connect_error', (error) => {
+                addEvent('system', `Error de conexión: ${error.message}`);
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                joinedRooms.clear();
+                updateRooms();
+                updateStatus(false);
+                addEvent('system', 'Desconectado manualmente');
+            }
+        }
+
+        function joinRoom() {
+            if (!socket || !socket.connected) {
+                alert('Primero debes conectarte al servidor');
+                return;
+            }
+
+            const store = document.getElementById('storeSelect').value;
+            const type = document.getElementById('typeSelect').value;
+
+            socket.emit('join-room', { store, type });
+            const roomName = `${store}-${type}`;
+            joinedRooms.add(roomName);
+            updateRooms();
+            addEvent('system', `Unido al room: ${roomName}`);
+        }
+
+        function leaveRoom() {
+            if (!socket || !socket.connected) {
+                alert('Primero debes conectarte al servidor');
+                return;
+            }
+
+            const store = document.getElementById('storeSelect').value;
+            const type = document.getElementById('typeSelect').value;
+
+            socket.emit('leave-room', { store, type });
+            const roomName = `${store}-${type}`;
+            joinedRooms.delete(roomName);
+            updateRooms();
+            addEvent('system', `Saliste del room: ${roomName}`);
+        }
+
+        function addEvent(type, title, data) {
+            const eventLog = document.getElementById('eventLog');
+            const time = new Date().toLocaleTimeString();
+            
+            const eventDiv = document.createElement('div');
+            eventDiv.className = `event ${type}`;
+            
+            let content = `
+                <div class="event-time">${time}</div>
+                <div class="event-type">${title}</div>
+            `;
+            
+            if (data) {
+                content += `<div class="event-data">${JSON.stringify(data, null, 2)}</div>`;
+            }
+            
+            eventDiv.innerHTML = content;
+            eventLog.insertBefore(eventDiv, eventLog.firstChild);
+
+            // Limitar a 50 eventos
+            while (eventLog.children.length > 50) {
+                eventLog.removeChild(eventLog.lastChild);
+            }
+        }
+
+        function clearEvents() {
+            document.getElementById('eventLog').innerHTML = '<p style="color: #999; text-align: center;">Esperando eventos...</p>';
+        }
+
+        // Auto-conectar al cargar
+        updateStatus(false);
+        updateRooms();
+    </script>
+</body>
+</html>

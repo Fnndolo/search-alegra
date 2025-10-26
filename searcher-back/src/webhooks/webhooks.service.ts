@@ -9,7 +9,7 @@ export class WebhooksService {
 
   constructor(
     private readonly configService: ConfigService,
-    private readonly storeCredentialsService: StoreCredentialsService
+    private readonly storeCredentialsService: StoreCredentialsService,
   ) { }
 
   async subscribeToEvents(store: string) {

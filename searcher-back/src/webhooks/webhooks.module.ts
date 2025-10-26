@@ -6,13 +6,15 @@ import { InvoicesModule } from '../invoices/invoices.module';
 import { BillsModule } from '../bills/bills.module';
 import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../shared/shared.module';
+import { WebsocketsModule } from '../websockets/websockets.module';
 
 @Module({
   imports: [
     ConfigModule,
     SharedModule,
     InvoicesModule,
-    BillsModule
+    BillsModule,
+    WebsocketsModule
   ],
   controllers: [WebhooksController],
   providers: [WebhooksService], // WebhooksInitializer desactivado - webhooks ya registrados

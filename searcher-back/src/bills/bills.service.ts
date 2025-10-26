@@ -40,7 +40,14 @@ export class BillsService {
   /**
    * Actualiza una cuenta por pagar individual por su ID
    */
-  async updateSingleBill(store: string, billId: string): Promise<void> {
+  async updateSingleBill(store: string, billId: string): Promise<any> {
     return await this.billsDbService.updateSingleBill(store, billId);
+  }
+
+  /**
+   * Obtiene una cuenta por pagar por su ID desde la base de datos
+   */
+  async getBillById(store: string, billId: string): Promise<any> {
+    return await this.billsDbService.getBillById(store, billId);
   }
 }

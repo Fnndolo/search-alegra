@@ -465,7 +465,7 @@ export class InvoicesService {
   /**
    * Actualiza una factura individual por su ID
    */
-  async updateSingleInvoice(store: string, invoiceId: string): Promise<void> {
+  async updateSingleInvoice(store: string, invoiceId: string): Promise<any> {
     this.logger.log(`Actualizando factura ${invoiceId} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
     
     try {
@@ -488,9 +488,44 @@ export class InvoicesService {
       await this.saveInvoicesToDB(store, [invoiceData]);
       
       this.logger.log(`✅ Factura ${invoiceId} actualizada correctamente`);
+      
+      // Retornar la factura actualizada
+      return invoiceData;
     } catch (error) {
       this.logger.error(`Error actualizando factura ${invoiceId} para ${store}`, error);
       throw new ServiceUnavailableException(`Error actualizando factura: ${error.message}`);
+    }
+  }
+
+  /**
+   * Obtiene una factura por su ID desde la base de datos
+   */
+  async getInvoiceById(store: string, invoiceId: string): Promise<any> {
+    try {
+      const invoice = await this.invoiceRepository.findOne({
+        where: { 
+          store,
+          data: { id: invoiceId } as any
+        }
+      });
+
+      if (!invoice) {
+        return null;
+      }
+
+      // Retornar los datos de la factura con el bankAccount inyectado si existe
+      const invoiceData = { ...invoice.data };
+      if (invoice.bankAccountName && invoiceData.payments && invoiceData.payments.length > 0) {
+        invoiceData.payments = invoiceData.payments.map(payment => ({
+          ...payment,
+          bankAccount: invoice.bankAccountName
+        }));
+      }
+
+      return invoiceData;
+    } catch (error) {
+      this.logger.error(`Error obteniendo factura ${invoiceId} para ${store}`, error);
+      return null;
     }
   }
 

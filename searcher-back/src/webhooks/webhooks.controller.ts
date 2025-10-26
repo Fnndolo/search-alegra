@@ -3,6 +3,7 @@ import { Response } from 'express';
 import { InvoicesService } from '../invoices/invoices.service';
 import { BillsService } from '../bills/bills.service';
 import { WebhooksService } from './webhooks.service';
+import { WebsocketsGateway } from '../websockets/websockets.gateway';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -11,7 +12,8 @@ export class WebhooksController {
   constructor(
     private readonly invoicesService: InvoicesService,
     private readonly billsService: BillsService,
-    private readonly webhooksService: WebhooksService
+    private readonly webhooksService: WebhooksService,
+    private readonly websocketsGateway: WebsocketsGateway,
   ) {}
 
   @Post(':store')
@@ -64,13 +66,31 @@ export class WebhooksController {
         // Procesar según el tipo
         switch (entityType) {
           case 'invoice':
-            await this.invoicesService.updateSingleInvoice(store, entityId);
+            const invoiceData = await this.invoicesService.updateSingleInvoice(store, entityId);
             this.logger.log(`✅ Invoice ${entityId} processed for ${store}`);
+            
+            // Emitir evento WebSocket según el tipo de acción
+            if (subject.includes('new')) {
+              this.websocketsGateway.emitInvoiceCreated(store, invoiceData);
+            } else if (subject.includes('edit')) {
+              this.websocketsGateway.emitInvoiceUpdated(store, invoiceData);
+            } else if (subject.includes('delete')) {
+              this.websocketsGateway.emitInvoiceDeleted(store, entityId);
+            }
             break;
 
           case 'bill':
-            await this.billsService.updateSingleBill(store, entityId);
+            const billData = await this.billsService.updateSingleBill(store, entityId);
             this.logger.log(`✅ Bill ${entityId} processed for ${store}`);
+            
+            // Emitir evento WebSocket según el tipo de acción
+            if (subject.includes('new')) {
+              this.websocketsGateway.emitBillCreated(store, billData);
+            } else if (subject.includes('edit')) {
+              this.websocketsGateway.emitBillUpdated(store, billData);
+            } else if (subject.includes('delete')) {
+              this.websocketsGateway.emitBillDeleted(store, entityId);
+            }
             break;
         }
       } catch (error) {
