@@ -50,4 +50,11 @@ export class BillsService {
   async getBillById(store: string, billId: string): Promise<any> {
     return await this.billsDbService.getBillById(store, billId);
   }
+
+  /**
+   * Elimina una cuenta por pagar de la base de datos
+   */
+  async deleteSingleBill(store: string, billId: string): Promise<void> {
+    return await this.billsDbService.deleteSingleBill(store, billId);
+  }
 }

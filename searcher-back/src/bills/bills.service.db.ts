@@ -530,4 +530,31 @@ export class BillsDbService {
       return null;
     }
   }
+
+  /**
+   * Elimina una cuenta por pagar de la base de datos
+   */
+  async deleteSingleBill(store: string, billId: string): Promise<void> {
+    this.logger.log(`🗑️ Eliminando cuenta por pagar ${billId} de ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    
+    try {
+      // Buscar la bill en la base de datos
+      const bill = await this.billRepository.findOne({
+        where: { 
+          store,
+          data: { id: billId } as any
+        }
+      });
+
+      if (bill) {
+        await this.billRepository.remove(bill);
+        this.logger.log(`✅ Cuenta por pagar ${billId} eliminada de la base de datos`);
+      } else {
+        this.logger.warn(`⚠️ Cuenta por pagar ${billId} no encontrada en la base de datos`);
+      }
+    } catch (error) {
+      this.logger.error(`Error eliminando cuenta por pagar ${billId} para ${store}`, error);
+      throw new ServiceUnavailableException(`Error eliminando cuenta por pagar: ${error.message}`);
+    }
+  }
 }

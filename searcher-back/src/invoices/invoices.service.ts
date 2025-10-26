@@ -530,6 +530,33 @@ export class InvoicesService {
   }
 
   /**
+   * Elimina una factura de la base de datos
+   */
+  async deleteSingleInvoice(store: string, invoiceId: string): Promise<void> {
+    this.logger.log(`🗑️ Eliminando factura ${invoiceId} de ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    
+    try {
+      // Buscar la factura en la base de datos
+      const invoice = await this.invoiceRepository.findOne({
+        where: { 
+          store,
+          data: { id: invoiceId } as any
+        }
+      });
+
+      if (invoice) {
+        await this.invoiceRepository.remove(invoice);
+        this.logger.log(`✅ Factura ${invoiceId} eliminada de la base de datos`);
+      } else {
+        this.logger.warn(`⚠️ Factura ${invoiceId} no encontrada en la base de datos`);
+      }
+    } catch (error) {
+      this.logger.error(`Error eliminando factura ${invoiceId} para ${store}`, error);
+      throw new ServiceUnavailableException(`Error eliminando factura: ${error.message}`);
+    }
+  }
+
+  /**
    * Recarga TODAS las facturas desde cero con sus medios de pago
    * Proceso optimizado:
    * 1. Elimina todas las facturas existentes

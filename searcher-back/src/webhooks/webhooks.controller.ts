@@ -66,30 +66,40 @@ export class WebhooksController {
         // Procesar según el tipo
         switch (entityType) {
           case 'invoice':
-            const invoiceData = await this.invoicesService.updateSingleInvoice(store, entityId);
-            this.logger.log(`✅ Invoice ${entityId} processed for ${store}`);
-            
-            // Emitir evento WebSocket según el tipo de acción
-            if (subject.includes('new')) {
-              this.websocketsGateway.emitInvoiceCreated(store, invoiceData);
-            } else if (subject.includes('edit')) {
-              this.websocketsGateway.emitInvoiceUpdated(store, invoiceData);
-            } else if (subject.includes('delete')) {
+            // Para delete, eliminar de DB y emitir evento
+            if (subject.includes('delete')) {
+              await this.invoicesService.deleteSingleInvoice(store, entityId);
+              this.logger.log(`🗑️ Invoice ${entityId} deleted for ${store}`);
               this.websocketsGateway.emitInvoiceDeleted(store, entityId);
+            } else {
+              // Para new y edit, obtener datos y emitir
+              const invoiceData = await this.invoicesService.updateSingleInvoice(store, entityId);
+              this.logger.log(`✅ Invoice ${entityId} processed for ${store}`);
+              
+              if (subject.includes('new')) {
+                this.websocketsGateway.emitInvoiceCreated(store, invoiceData);
+              } else if (subject.includes('edit')) {
+                this.websocketsGateway.emitInvoiceUpdated(store, invoiceData);
+              }
             }
             break;
 
           case 'bill':
-            const billData = await this.billsService.updateSingleBill(store, entityId);
-            this.logger.log(`✅ Bill ${entityId} processed for ${store}`);
-            
-            // Emitir evento WebSocket según el tipo de acción
-            if (subject.includes('new')) {
-              this.websocketsGateway.emitBillCreated(store, billData);
-            } else if (subject.includes('edit')) {
-              this.websocketsGateway.emitBillUpdated(store, billData);
-            } else if (subject.includes('delete')) {
+            // Para delete, eliminar de DB y emitir evento
+            if (subject.includes('delete')) {
+              await this.billsService.deleteSingleBill(store, entityId);
+              this.logger.log(`🗑️ Bill ${entityId} deleted for ${store}`);
               this.websocketsGateway.emitBillDeleted(store, entityId);
+            } else {
+              // Para new y edit, obtener datos y emitir
+              const billData = await this.billsService.updateSingleBill(store, entityId);
+              this.logger.log(`✅ Bill ${entityId} processed for ${store}`);
+              
+              if (subject.includes('new')) {
+                this.websocketsGateway.emitBillCreated(store, billData);
+              } else if (subject.includes('edit')) {
+                this.websocketsGateway.emitBillUpdated(store, billData);
+              }
             }
             break;
         }
