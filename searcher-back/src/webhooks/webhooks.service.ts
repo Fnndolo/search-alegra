@@ -23,8 +23,10 @@ export class WebhooksService {
     const events: WebhookEvent[] = [
       'new-invoice',
       'edit-invoice',
+      'delete-invoice',
       'new-bill',
-      'edit-bill'
+      'edit-bill',
+      'delete-bill'
     ];
 
     this.logger.log(`Starting webhook registration for ${store}`);
