@@ -35,7 +35,7 @@
         <input
           type="text"
           pInputText
-          placeholder="Buscar por ID, cliente/proveedor, item, anotación o descripción"
+          placeholder="Buscar por ID, cliente/proveedor, item, vendedor, anotación o descripción"
           [(ngModel)]="filterValue"
           (input)="onFilterChange()"
           class="p-inputtext !border-2 !border-blue-700 !text-gray-800 !bg-white !placeholder-gray-400 hover:!bg-blue-50 !transition !font-medium !rounded-lg !px-4 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !w-full md:!w-80 !shadow-sm"
@@ -89,26 +89,33 @@
     >
       <ng-template pTemplate="header">
         <tr class="!bg-blue-800 !text-white !text-sm">
-          <th class="!px-6 !py-4 !font-bold !text-left !rounded-tl-xl">ID</th>
+          <th class="!px-6 !py-4 !font-bold !text-left !rounded-tl-xl">Creación</th>
+          <th class="!px-6 !py-4 !font-bold !text-left">Número</th>
           <th class="!px-6 !py-4 !font-bold !text-left">
             {{ selectedInvoiceType === 'sales' ? 'Cliente' : 'Proveedor' }}
           </th>
-          <th class="!px-6 !py-4 !font-bold !text-left">Fecha</th>
           <th class="!px-6 !py-4 !font-bold !text-left">
             {{ selectedInvoiceType === 'sales' ? 'Item' : 'Items' }}
           </th>
           <th class="!px-6 !py-4 !font-bold !text-left">Anotación</th>
           <th class="!px-6 !py-4 !font-bold !text-left">Descripción</th>
+          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Método de Pago</th>
+          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Vendedor</th>
+          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Estado</th>
           <th class="!px-6 !py-4 !font-bold !text-left !rounded-tr-xl">Acción</th>
         </tr>
       </ng-template>
       <ng-template pTemplate="body" let-invoice>
-        <tr class="!bg-white !border-b !border-gray-100 hover:!bg-blue-50 !transition !shadow-sm">
+        <tr 
+          class="!bg-white !border-b !border-gray-100 hover:!bg-blue-50 !transition !shadow-sm"
+          [class.new-invoice-animation]="isNewInvoice(invoice.id)"
+          [class.deleted-invoice-animation]="isDeletedInvoice(invoice.id)"
+        >
+          <td class="!px-6 !py-4 !text-gray-700 whitespace-nowrap">{{ invoice.date }}</td>
           <td class="!px-6 !py-4 !font-mono !font-bold !text-blue-900">{{ invoice.numberTemplate.number }}</td>
           <td class="!px-6 !py-4 !text-gray-900">
             {{ selectedInvoiceType === 'sales' ? invoice.client?.name : invoice.provider?.name }}
           </td>
-          <td class="!px-6 !py-4 !text-gray-700">{{ invoice.date }}</td>
           <td class="!px-6 !py-4 !text-gray-700">
             <span *ngIf="selectedInvoiceType === 'sales'">
               {{ invoice.items[0]?.name }}
@@ -132,6 +139,23 @@
               <span *ngFor="let item of invoice.purchases?.items; let i = index">
                 {{ item.description }}<span *ngIf="i < invoice.purchases.items.length - 1">, </span>
               </span>
+            </span>
+          </td>
+          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
+            {{ invoice.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE' }}
+          </td>
+          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
+            {{ invoice.seller?.name || 'N/A' }}
+          </td>
+          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4">
+            <span
+              class="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
+              [ngStyle]="{
+                'background-color': getStatusColor(invoice.status).bg,
+                'color': getStatusColor(invoice.status).text
+              }"
+            >
+              {{ getStatusText(invoice.status) }}
             </span>
           </td>
           <td class="!px-6 !py-4">
@@ -228,7 +252,7 @@
               ✅ Encontrados ({{ massiveSearchResults.found.length }})
             </h5>
             <div class="max-h-32 overflow-y-auto">
-              <div *ngFor="let result of massiveSearchResults.found" 
+              <div *ngFor="let result of massiveSearchResults.found"
                    class="text-sm mb-1"
                    [class.text-green-700]="!result.isDuplicate"
                    [class.text-red-700]="result.isDuplicate"

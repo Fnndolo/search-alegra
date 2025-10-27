@@ -20,4 +20,4 @@ import { WebsocketsModule } from '../websockets/websockets.module';
   providers: [WebhooksService], // WebhooksInitializer desactivado - webhooks ya registrados
   exports: [WebhooksService]
 })
-export class WebhooksModule {}
+export class WebhooksModule { }

@@ -26,7 +26,7 @@ export class InvoicesService {
     private readonly invoiceRepository: Repository<Invoice>,
     @InjectRepository(SyncStatus)
     private readonly syncStatusRepository: Repository<SyncStatus>,
-  ) {}
+  ) { }
 
   /**
    * Método auxiliar para hacer requests con reintentos en caso de rate limiting
@@ -70,20 +70,20 @@ export class InvoicesService {
   /**
    * Obtiene las facturas desde la base de datos con paginación
    */
-  async getCachedInvoices(store: string): Promise<{ 
-    updating: boolean; 
-    progress: number; 
-    fullyLoaded: boolean; 
-    data: any[]; 
-    store: string; 
+  async getCachedInvoices(store: string): Promise<{
+    updating: boolean;
+    progress: number;
+    fullyLoaded: boolean;
+    data: any[];
+    store: string;
     storeDisplayName: string;
     total: number;
   }> {
     // Validar que la tienda sea válida
     this.storeCredentialsService.getCredentials(store);
-    
+
     const syncStatus = await this.getSyncStatus(store);
-    
+
     // Si no hay datos, inicializar la carga
     if (syncStatus.totalRecords === 0 && !syncStatus.isSyncing) {
       this.logger.log(`Iniciando carga inicial para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
@@ -91,20 +91,20 @@ export class InvoicesService {
         this.logger.error(`Error en carga inicial para ${store}`, error);
       });
     }
-    
+
     // Obtener las facturas de la base de datos ordenadas por ID descendente, luego por fecha
     const invoices = await this.invoiceRepository.find({
       where: { store },
       order: { id: 'DESC', datetime: 'DESC', date: 'DESC' },
     });
-    
+
     return {
       updating: syncStatus.isSyncing,
       progress: invoices.length,
       fullyLoaded: syncStatus.isFullyLoaded,
       data: invoices.map(inv => {
         const invoiceData = { ...inv.data };
-        
+
         // Si tiene bankAccountName y payments, agregar bankAccount dentro de payments
         if (inv.bankAccountName && invoiceData.payments && invoiceData.payments.length > 0) {
           invoiceData.payments = invoiceData.payments.map(payment => ({
@@ -112,7 +112,7 @@ export class InvoicesService {
             bankAccount: inv.bankAccountName
           }));
         }
-        
+
         return invoiceData;
       }),
       store: store,
@@ -126,7 +126,7 @@ export class InvoicesService {
    */
   private async initializeDataLoad(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una sincronización en progreso para ${store}`);
       return;
@@ -150,10 +150,10 @@ export class InvoicesService {
   async loadAllInvoicesFromAPI(store: string): Promise<void> {
     const credentials = this.storeCredentialsService.getCredentials(store);
     const syncStatus = await this.getSyncStatus(store);
-    
+
     try {
       // Obtener el total de facturas
-      const metadataResponse = await this.makeRequestWithRetry(() => 
+      const metadataResponse = await this.makeRequestWithRetry(() =>
         axios.get(credentials.invoicesApiUrl, {
           params: { start: 0, limit: 1, metadata: true, order_direction: 'DESC' },
           headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
@@ -185,7 +185,7 @@ export class InvoicesService {
           try {
             const results = await Promise.allSettled(batchRequests);
             const newInvoices: any[] = [];
-            
+
             results.forEach((result) => {
               if (result.status === 'fulfilled') {
                 newInvoices.push(...(result.value.data.data || []));
@@ -197,7 +197,7 @@ export class InvoicesService {
             // Guardar en la base de datos
             if (newInvoices.length > 0) {
               await this.saveInvoicesToDB(store, newInvoices);
-              
+
               const currentCount = await this.invoiceRepository.count({ where: { store } });
               this.logger.log(`Progreso de carga ${this.storeCredentialsService.getStoreDisplayName(store)}: ${currentCount}/${total} facturas`);
             }
@@ -239,7 +239,7 @@ export class InvoicesService {
   private async getPaymentMethod(store: string, invoiceData: any): Promise<string | null> {
     try {
       const credentials = this.storeCredentialsService.getCredentials(store);
-      
+
       // Verificar si la factura tiene pagos
       if (!invoiceData.payments || invoiceData.payments.length === 0) {
         return null;
@@ -247,7 +247,7 @@ export class InvoicesService {
 
       // Obtener el ID del primer pago
       const paymentId = invoiceData.payments[0].id;
-      
+
       if (!paymentId) {
         return null;
       }
@@ -260,10 +260,10 @@ export class InvoicesService {
       );
 
       const paymentData = response.data;
-      
+
       // Retornar el nombre de la cuenta bancaria
       return paymentData?.bankAccount?.name || null;
-      
+
     } catch (error) {
       this.logger.warn(`Error obteniendo medio de pago para factura ${invoiceData.id}:`, error.message);
       return null;
@@ -274,7 +274,7 @@ export class InvoicesService {
     for (const invoiceData of invoices) {
       // Obtener el medio de pago
       const paymentMethod = await this.getPaymentMethod(store, invoiceData);
-      
+
       // Buscar si ya existe
       const existingInvoice = await this.invoiceRepository.findOne({
         where: { id: invoiceData.id, store }
@@ -306,7 +306,7 @@ export class InvoicesService {
    */
   async updateInvoicesManually(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una actualización en progreso para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       return;
@@ -337,7 +337,7 @@ export class InvoicesService {
    */
   private async fetchNewInvoices(store: string): Promise<void> {
     const credentials = this.storeCredentialsService.getCredentials(store);
-    
+
     // Obtener la última factura de la base de datos
     const lastInvoice = await this.invoiceRepository.findOne({
       where: { store },
@@ -350,8 +350,8 @@ export class InvoicesService {
       return;
     }
 
-    const lastDate = lastInvoice.datetime ? 
-      lastInvoice.datetime.toISOString().split('T')[0] : 
+    const lastDate = lastInvoice.datetime ?
+      lastInvoice.datetime.toISOString().split('T')[0] :
       lastInvoice.date?.toISOString().split('T')[0];
 
     this.logger.log(`Buscando facturas nuevas desde ${lastDate} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
@@ -390,7 +390,7 @@ export class InvoicesService {
       );
 
       const sameDayInvoices = (sameDayResponse.data.data || []).filter((inv: any) =>
-        inv.datetime && lastInvoice.datetime && 
+        inv.datetime && lastInvoice.datetime &&
         new Date(inv.datetime) > lastInvoice.datetime
       );
 
@@ -419,17 +419,17 @@ export class InvoicesService {
    */
   async clearCacheAndReload(store: string): Promise<void> {
     this.logger.log(`Limpiando caché y recargando datos para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     // Eliminar todas las facturas de esta tienda
     await this.invoiceRepository.delete({ store });
-    
+
     // Resetear el estado de sincronización
     const syncStatus = await this.getSyncStatus(store);
     syncStatus.totalRecords = 0;
     syncStatus.isFullyLoaded = false;
     syncStatus.isSyncing = false;
     await this.syncStatusRepository.save(syncStatus);
-    
+
     // Iniciar carga completa
     await this.initializeDataLoad(store);
   }
@@ -439,14 +439,14 @@ export class InvoicesService {
    */
   async ensureFullDataPersistence(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una operación en progreso para facturas de ${store}`);
       return;
     }
 
     this.logger.log(`🔄 Asegurando persistencia completa de facturas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     syncStatus.isSyncing = true;
     await this.syncStatusRepository.save(syncStatus);
 
@@ -467,10 +467,10 @@ export class InvoicesService {
    */
   async updateSingleInvoice(store: string, invoiceId: string): Promise<any> {
     this.logger.log(`Actualizando factura ${invoiceId} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     try {
       const credentials = this.storeCredentialsService.getCredentials(store);
-      
+
       // Obtener la factura de la API
       const response = await this.makeRequestWithRetry(() =>
         axios.get(`${credentials.invoicesApiUrl}/${invoiceId}`, {
@@ -479,16 +479,16 @@ export class InvoicesService {
       );
 
       const invoiceData = response.data;
-      
+
       if (!invoiceData) {
         throw new Error(`No se encontró la factura ${invoiceId}`);
       }
 
       // Guardar o actualizar la factura
       await this.saveInvoicesToDB(store, [invoiceData]);
-      
+
       this.logger.log(`✅ Factura ${invoiceId} actualizada correctamente`);
-      
+
       // Retornar la factura actualizada
       return invoiceData;
     } catch (error) {
@@ -503,7 +503,7 @@ export class InvoicesService {
   async getInvoiceById(store: string, invoiceId: string): Promise<any> {
     try {
       const invoice = await this.invoiceRepository.findOne({
-        where: { 
+        where: {
           store,
           data: { id: invoiceId } as any
         }
@@ -534,11 +534,11 @@ export class InvoicesService {
    */
   async deleteSingleInvoice(store: string, invoiceId: string): Promise<void> {
     this.logger.log(`🗑️ Eliminando factura ${invoiceId} de ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     try {
       // Buscar la factura en la base de datos
       const invoice = await this.invoiceRepository.findOne({
-        where: { 
+        where: {
           store,
           data: { id: invoiceId } as any
         }
@@ -565,9 +565,9 @@ export class InvoicesService {
    */
   async reloadAllWithPayments(store: string): Promise<void> {
     this.logger.log(`🔄 Iniciando recarga completa con medios de pago para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     const syncStatus = await this.getSyncStatus(store);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.warn(`Ya hay una recarga en progreso para ${store}`);
       return;
@@ -580,22 +580,22 @@ export class InvoicesService {
       // Paso 1: Eliminar todas las facturas
       this.logger.log(`🗑️ Eliminando facturas existentes de ${store}...`);
       await this.invoiceRepository.delete({ store });
-      
+
       // Paso 2: Resetear sync status
       syncStatus.totalRecords = 0;
       syncStatus.isFullyLoaded = false;
       await this.syncStatusRepository.save(syncStatus);
-      
+
       // Paso 3: Cargar todas las facturas (sin medios de pago aún, rápido)
       this.logger.log(`📥 Cargando todas las facturas...`);
       await this.loadAllInvoicesFromAPI(store);
-      
+
       // Paso 4: Actualizar medios de pago en segundo plano
       this.logger.log(`💳 Actualizando medios de pago...`);
       await this.updateAllPaymentMethods(store);
-      
+
       this.logger.log(`✅ Recarga completa finalizada para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-      
+
     } catch (error) {
       this.logger.error(`Error en recarga completa para ${store}:`, error);
       throw error;
@@ -612,18 +612,18 @@ export class InvoicesService {
   private async updateAllPaymentMethods(store: string): Promise<void> {
     const batchSize = 10; // Procesar 10 facturas a la vez
     let processed = 0;
-    
+
     // Obtener todas las facturas que tienen pagos
-    const allInvoices = await this.invoiceRepository.find({ 
+    const allInvoices = await this.invoiceRepository.find({
       where: { store },
       order: { id: 'DESC' }
     });
-    
+
     this.logger.log(`📊 Total de facturas a procesar: ${allInvoices.length}`);
-    
+
     for (let i = 0; i < allInvoices.length; i += batchSize) {
       const batch = allInvoices.slice(i, i + batchSize);
-      
+
       // Procesar este lote
       await Promise.all(
         batch.map(async (invoice) => {
@@ -641,16 +641,16 @@ export class InvoicesService {
           }
         })
       );
-      
+
       processed += batch.length;
       this.logger.log(`💳 Progreso: ${processed}/${allInvoices.length} facturas procesadas`);
-      
+
       // Pausa entre lotes para no saturar la API
       if (i + batchSize < allInvoices.length) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
-    
+
     this.logger.log(`✅ Medios de pago actualizados para ${processed} facturas`);
   }
 }

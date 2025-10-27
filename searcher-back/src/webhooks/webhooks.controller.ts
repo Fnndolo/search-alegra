@@ -14,7 +14,7 @@ export class WebhooksController {
     private readonly billsService: BillsService,
     private readonly webhooksService: WebhooksService,
     private readonly websocketsGateway: WebsocketsGateway,
-  ) {}
+  ) { }
 
   @Post(':store')
   async handleWebhook(
@@ -75,7 +75,7 @@ export class WebhooksController {
               // Para new y edit, obtener datos y emitir
               const invoiceData = await this.invoicesService.updateSingleInvoice(store, entityId);
               this.logger.log(`✅ Invoice ${entityId} processed for ${store}`);
-              
+
               if (subject.includes('new')) {
                 this.websocketsGateway.emitInvoiceCreated(store, invoiceData);
               } else if (subject.includes('edit')) {
@@ -94,7 +94,7 @@ export class WebhooksController {
               // Para new y edit, obtener datos y emitir
               const billData = await this.billsService.updateSingleBill(store, entityId);
               this.logger.log(`✅ Bill ${entityId} processed for ${store}`);
-              
+
               if (subject.includes('new')) {
                 this.websocketsGateway.emitBillCreated(store, billData);
               } else if (subject.includes('edit')) {
@@ -118,8 +118,8 @@ export class WebhooksController {
       return result;
     } catch (error) {
       this.logger.error(`Error registering webhooks for ${store}: ${error.message}`);
-      return { 
-        success: false, 
+      return {
+        success: false,
         error: error.message,
         store: store
       };
@@ -131,8 +131,8 @@ export class WebhooksController {
   @HttpCode(200)
   testWebhook(@Param('store') store: string) {
     this.logger.log(`Test webhook endpoint called for ${store}`);
-    return { 
-      status: 'ok', 
+    return {
+      status: 'ok',
       message: `Webhook endpoint for ${store} is working`,
       timestamp: new Date().toISOString()
     };

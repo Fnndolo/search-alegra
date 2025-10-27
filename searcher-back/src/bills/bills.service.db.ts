@@ -26,7 +26,7 @@ export class BillsDbService {
     private readonly billRepository: Repository<Bill>,
     @InjectRepository(SyncStatus)
     private readonly syncStatusRepository: Repository<SyncStatus>,
-  ) {}
+  ) { }
 
   /**
    * Método auxiliar para hacer requests con reintentos en caso de rate limiting
@@ -83,22 +83,22 @@ export class BillsDbService {
   /**
    * Obtiene las bills desde la base de datos con paginación
    */
-  async getCachedBills(store: string): Promise<{ 
-    updating: boolean; 
-    progress: number; 
-    fullyLoaded: boolean; 
-    data: any[]; 
-    store: string; 
+  async getCachedBills(store: string): Promise<{
+    updating: boolean;
+    progress: number;
+    fullyLoaded: boolean;
+    data: any[];
+    store: string;
     storeDisplayName: string;
     total: number;
   }> {
     // Validar que la tienda sea válida
     this.storeCredentialsService.getCredentials(store);
-    
+
     const syncStatus = await this.getSyncStatus(store);
-    
+
     this.logger.log(`Estado de bills para ${store}: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}, isFullyLoaded=${syncStatus.isFullyLoaded}`);
-    
+
     // Si no hay datos o la carga no está completa, inicializar la carga
     if ((!syncStatus.isFullyLoaded || syncStatus.totalRecords === 0) && !syncStatus.isSyncing) {
       this.logger.log(`Iniciando carga inicial de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
@@ -108,13 +108,13 @@ export class BillsDbService {
     } else {
       this.logger.log(`No se inicia carga: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}, isFullyLoaded=${syncStatus.isFullyLoaded}`);
     }
-    
+
     // Obtener las bills de la base de datos ordenadas por ID descendente, luego por fecha
     const bills = await this.billRepository.find({
       where: { store },
       order: { id: 'DESC', date: 'DESC' },
     });
-    
+
     return {
       updating: syncStatus.isSyncing,
       progress: bills.length,
@@ -131,7 +131,7 @@ export class BillsDbService {
    */
   private async initializeDataLoad(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una sincronización de bills en progreso para ${store}`);
       return;
@@ -154,13 +154,13 @@ export class BillsDbService {
    */
   async resetSyncStatus(store: string): Promise<void> {
     this.logger.log(`Reseteando estado de sincronización de bills para ${store}`);
-    
+
     const syncStatus = await this.getSyncStatus(store);
     syncStatus.isSyncing = false;
     syncStatus.isFullyLoaded = false;
     syncStatus.lastSyncDatetime = null;
     await this.syncStatusRepository.save(syncStatus);
-    
+
     this.logger.log(`Estado de sincronización reseteado para ${store}`);
   }
 
@@ -170,10 +170,10 @@ export class BillsDbService {
   private async loadAllBillsFromAPI(store: string): Promise<void> {
     const credentials = this.storeCredentialsService.getCredentials(store);
     const syncStatus = await this.getSyncStatus(store);
-    
+
     try {
       // Obtener el total de bills
-      const metadataResponse = await this.makeRequestWithRetry(() => 
+      const metadataResponse = await this.makeRequestWithRetry(() =>
         axios.get(credentials.billsApiUrl, {
           params: { start: 0, limit: 1, metadata: true, order_direction: 'DESC' },
           headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
@@ -196,7 +196,7 @@ export class BillsDbService {
 
       for (start = 0; start < total; start += this.limit) {
         this.logger.log(`📥 Preparando batch para start=${start}, limit=${this.limit}`);
-        
+
         batchRequests.push(
           this.makeRequestWithRetry(() =>
             axios.get(credentials.billsApiUrl, {
@@ -209,11 +209,11 @@ export class BillsDbService {
         // Procesar en lotes de 2 requests para evitar rate limiting
         if (batchRequests.length === 2 || start + this.limit >= total) {
           this.logger.log(`🔄 Procesando lote de ${batchRequests.length} requests para ${store}`);
-          
+
           try {
             const results = await Promise.allSettled(batchRequests);
             const newBills: any[] = [];
-            
+
             results.forEach((result, index) => {
               if (result.status === 'fulfilled') {
                 const responseData = result.value.data;
@@ -231,7 +231,7 @@ export class BillsDbService {
             if (newBills.length > 0) {
               this.logger.log(`💾 Guardando ${newBills.length} bills en la base de datos para ${store}`);
               await this.saveBillsToDB(store, newBills);
-              
+
               const currentCount = await this.billRepository.count({ where: { store } });
               this.logger.log(`Progreso de carga bills ${this.storeCredentialsService.getStoreDisplayName(store)}: ${currentCount}/${total} bills`);
             } else {
@@ -301,10 +301,10 @@ export class BillsDbService {
    */
   async updateBillsManually(store: string): Promise<void> {
     this.logger.log(`🚀 INICIANDO updateBillsManually para ${store}`);
-    
+
     const syncStatus = await this.getSyncStatus(store);
     this.logger.log(`📊 syncStatus obtenido: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}`);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una actualización de bills en progreso para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       return;
@@ -318,7 +318,7 @@ export class BillsDbService {
     }
 
     this.logger.log(`🔄 Iniciando actualización manual de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     syncStatus.isSyncing = true;
     await this.syncStatusRepository.save(syncStatus);
     this.logger.log(`💾 syncStatus marcado como isSyncing=true`);
@@ -341,10 +341,10 @@ export class BillsDbService {
    */
   private async fetchNewBills(store: string): Promise<void> {
     this.logger.log(`🎯 ENTRANDO A fetchNewBills para ${store}`);
-    
+
     const credentials = this.storeCredentialsService.getCredentials(store);
     this.logger.log(`🔑 Credenciales obtenidas para ${store}`);
-    
+
     // Obtener la fecha de hoy para buscar bills de hoy
     const today = new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
     this.logger.log(`� Buscando bills de hoy: ${today}`);
@@ -354,13 +354,13 @@ export class BillsDbService {
     try {
       // Buscar bills de hoy usando el parámetro 'date' que funciona en Postman
       this.logger.log(`🌐 Buscando bills con date=${today}`);
-      
+
       // Log de las credenciales para debug
       const authHeader = `Basic ${Buffer.from(credentials.apiKey).toString('base64')}`;
       this.logger.log(`🔑 API Key usado: ${credentials.apiKey}`);
       this.logger.log(`🔑 Auth header: ${authHeader}`);
       this.logger.log(`🌐 URL completa: ${credentials.billsApiUrl}`);
-      
+
       const params = {
         metadata: false,
         limit: 30,
@@ -368,9 +368,9 @@ export class BillsDbService {
         date: today,
         type: 'bill'
       };
-      
+
       this.logger.log(`📋 Parámetros enviados: ${JSON.stringify(params)}`);
-      
+
       const response = await this.makeRequestWithRetry(() =>
         axios.get(credentials.billsApiUrl, {
           params,
@@ -379,7 +379,7 @@ export class BillsDbService {
       );
 
       this.logger.log(`📡 Respuesta completa de la API: ${JSON.stringify(response.data, null, 2)}`);
-      
+
       // La respuesta puede ser un array directo o un objeto con data
       newBills = Array.isArray(response.data) ? response.data : (response.data.data || []);
       this.logger.log(`📋 Bills encontradas para ${today}: ${newBills.length}`);
@@ -394,21 +394,21 @@ export class BillsDbService {
           select: ['id']
         });
         const existingIds = new Set(existingBillsQuery.map(bill => parseInt(bill.id.toString())));
-        
+
         this.logger.log(`🔍 IDs existentes en DB (total: ${existingIds.size})`);
 
         const beforeFilter = newBills.length;
         newBills = newBills.filter(bill => !existingIds.has(parseInt(bill.id.toString())));
-        
+
         this.logger.log(`📋 Bills nuevas después de filtrar existentes: ${newBills.length} (eliminadas: ${beforeFilter - newBills.length})`);
 
         if (newBills.length > 0) {
           this.logger.log(`💾 Guardando ${newBills.length} bills nuevas...`);
           this.logger.log(`🆕 IDs de bills nuevas a guardar: ${newBills.map(b => b.id).join(', ')}`);
-          
+
           await this.saveBillsToDB(store, newBills);
           this.logger.log(`✅ ${newBills.length} bills nuevas agregadas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-          
+
           // Actualizar el total
           const syncStatus = await this.getSyncStatus(store);
           const currentCount = await this.billRepository.count({ where: { store } });
@@ -432,14 +432,14 @@ export class BillsDbService {
    */
   async clearCacheAndReload(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
-    
+
     this.logger.log(`Forzando recarga completa de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     // Resetear el estado pero NO eliminar los datos de la base de datos
     syncStatus.isSyncing = false;
     syncStatus.isFullyLoaded = false;
     await this.syncStatusRepository.save(syncStatus);
-    
+
     // Iniciar carga completa (esto agregará nuevos datos sin eliminar existentes)
     await this.initializeDataLoad(store);
   }
@@ -449,14 +449,14 @@ export class BillsDbService {
    */
   async ensureFullDataPersistence(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
-    
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una operación en progreso para bills de ${store}`);
       return;
     }
 
     this.logger.log(`🔄 Asegurando persistencia completa de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     syncStatus.isSyncing = true;
     await this.syncStatusRepository.save(syncStatus);
 
@@ -477,10 +477,10 @@ export class BillsDbService {
    */
   async updateSingleBill(store: string, billId: string): Promise<any> {
     this.logger.log(`Actualizando cuenta por pagar ${billId} para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     try {
       const credentials = this.storeCredentialsService.getCredentials(store);
-      
+
       // Obtener la bill de la API
       const response = await this.makeRequestWithRetry(() =>
         axios.get(`${credentials.billsApiUrl}/${billId}`, {
@@ -489,16 +489,16 @@ export class BillsDbService {
       );
 
       const billData = response.data;
-      
+
       if (!billData) {
         throw new Error(`No se encontró la cuenta por pagar ${billId}`);
       }
 
       // Guardar o actualizar la bill
       await this.saveBillsToDB(store, [billData]);
-      
+
       this.logger.log(`✅ Cuenta por pagar ${billId} actualizada correctamente`);
-      
+
       // Retornar la bill actualizada
       return billData;
     } catch (error) {
@@ -513,7 +513,7 @@ export class BillsDbService {
   async getBillById(store: string, billId: string): Promise<any> {
     try {
       const bill = await this.billRepository.findOne({
-        where: { 
+        where: {
           store,
           data: { id: billId } as any
         }
@@ -536,11 +536,11 @@ export class BillsDbService {
    */
   async deleteSingleBill(store: string, billId: string): Promise<void> {
     this.logger.log(`🗑️ Eliminando cuenta por pagar ${billId} de ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-    
+
     try {
       // Buscar la bill en la base de datos
       const bill = await this.billRepository.findOne({
-        where: { 
+        where: {
           store,
           data: { id: billId } as any
         }

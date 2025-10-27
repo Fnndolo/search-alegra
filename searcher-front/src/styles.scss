@@ -160,3 +160,64 @@
     padding: 0 0.5rem !important;
   }
 }
+
+/* Animación para facturas nuevas */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes highlightPulse {
+  0%, 100% {
+    background-color: #dbeafe;
+  }
+  50% {
+    background-color: #bfdbfe;
+  }
+}
+
+.new-invoice-animation {
+  animation: slideDown 0.5s ease-out, highlightPulse 2s ease-in-out;
+  background-color: #dbeafe !important;
+}
+
+.new-invoice-animation td {
+  font-weight: 600;
+}
+
+/* Animación para facturas eliminadas */
+@keyframes slideUpOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+}
+
+@keyframes highlightPulseRed {
+  0%, 100% {
+    background-color: #fee2e2;
+  }
+  50% {
+    background-color: #fecaca;
+  }
+}
+
+.deleted-invoice-animation {
+  animation: highlightPulseRed 0.4s ease-in-out, slideUpOut 0.4s ease-in 0.4s forwards;
+  background-color: #fee2e2 !important;
+}
+
+.deleted-invoice-animation td {
+  font-weight: 600;
+  color: #991b1b !important;
+}

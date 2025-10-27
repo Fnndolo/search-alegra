@@ -13,7 +13,6 @@ export class InvoiceService {
   getAllInvoices(store?: string): Observable<any> {
     const params = store ? `?store=${store}` : '';
     const fullUrl = `${this.apiUrl}/invoices/all${params}`;
-    console.log('🌐 Service: Llamando a', fullUrl);
     return this.http.get<any>(fullUrl);
   }
 
@@ -26,10 +25,8 @@ export class InvoiceService {
   getAllPurchaseInvoices(store?: string): Observable<any> {
     const params = store ? `?store=${store}` : '';
     const fullUrl = `${this.apiUrl}/bills/all${params}`;
-    console.log('🌐 Service: Llamando a', fullUrl);
     return this.http.get<any>(fullUrl).pipe(
       catchError(error => {
-        console.error('Endpoint de facturas de compra no disponible:', error);
         return of({ updating: false, progress: 0, data: [] });
       })
     );
@@ -39,7 +36,6 @@ export class InvoiceService {
     const params = store ? `?store=${store}` : '';
     return this.http.get<any>(`${this.apiUrl}/bills/update${params}`).pipe(
       catchError(error => {
-        console.error('Endpoint de facturas de compra no disponible:', error);
         return of({ updating: false, progress: 0, data: [] });
       })
     );

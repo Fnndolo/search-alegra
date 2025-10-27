@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TableModule } from 'primeng/table';
 import { InputTextModule } from 'primeng/inputtext';
@@ -6,9 +6,11 @@ import { PaginatorModule } from 'primeng/paginator';
 import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { InvoiceService } from '../../../core/http/invoice.service';
+import { SocketService } from '../../../core/services/socket.service';
 import { ButtonModule } from 'primeng/button';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-invoices',
@@ -25,11 +27,11 @@ import { InputIconModule } from 'primeng/inputicon';
     InputIconModule,
     InputTextModule
   ],
-  providers: [InvoiceService],
+  providers: [InvoiceService, SocketService],
   templateUrl: './invoices.component.html',
   // styleUrls: ['./invoices.component.scss']
 })
-export class InvoicesComponent implements OnInit {
+export class InvoicesComponent implements OnInit, OnDestroy {
   invoices: any[] = [];
   allInvoices: any[] = [];
   totalRecords = 0;
@@ -39,6 +41,11 @@ export class InvoicesComponent implements OnInit {
   page = 0;
   rows = 30;
   filterValue = '';
+
+  // Propiedades para WebSocket
+  private socketSubscriptions: Subscription[] = [];
+  newInvoiceIds: string[] = []; // Para rastrear facturas nuevas y animarlas
+  deletedInvoiceIds: string[] = []; // Para rastrear facturas eliminadas y animarlas
 
   // Nuevas propiedades para el selector
   invoiceTypes = [
@@ -62,13 +69,177 @@ export class InvoicesComponent implements OnInit {
   massiveSearchResults: any = null;
   massiveSearchLoading = false;
 
-  constructor(private invoiceService: InvoiceService) {
-    console.log('Constructor - invoiceTypes:', this.invoiceTypes);
-    console.log('Constructor - selectedInvoiceType:', this.selectedInvoiceType);
+  constructor(
+    private invoiceService: InvoiceService,
+    private socketService: SocketService,
+    private cdr: ChangeDetectorRef
+  ) {
   }
 
   ngOnInit() {
+    // Leer parámetros guardados de sessionStorage
+    const savedStore = sessionStorage.getItem('selectedStore');
+    const savedType = sessionStorage.getItem('selectedInvoiceType');
+
+    if (savedStore) {
+      this.selectedStore = savedStore;
+    }
+    if (savedType) {
+      this.selectedInvoiceType = savedType;
+    }
+
     this.loadInvoices();
+
+    // Conectar WebSocket y suscribirse a eventos
+    if (this.selectedStore && this.selectedInvoiceType) {
+      this.connectWebSocket();
+    }
+  }
+
+  ngOnDestroy() {
+    // Desconectar WebSocket y limpiar suscripciones
+    this.disconnectWebSocket();
+  }
+
+  connectWebSocket() {
+    // Solo conectar si no está conectado
+    if (!this.socketService.isConnected()) {
+      this.socketService.connect();
+    }
+
+    // Limpiar suscripciones anteriores antes de crear nuevas
+    this.socketSubscriptions.forEach(sub => sub.unsubscribe());
+    this.socketSubscriptions = [];
+
+    // Unirse a la sala específica de esta tienda y tipo
+    if (this.selectedStore && this.selectedInvoiceType) {
+      this.socketService.joinRoom(this.selectedStore, this.selectedInvoiceType);
+    }
+
+    // Suscribirse a eventos según el tipo de factura
+    if (this.selectedInvoiceType === 'sales') {
+      // Eventos para facturas de VENTA
+      const createdSub = this.socketService.onInvoiceCreated().subscribe({
+        next: (invoice) => this.handleInvoiceCreated(invoice)
+      });
+
+      const updatedSub = this.socketService.onInvoiceUpdated().subscribe({
+        next: (invoice) => this.handleInvoiceUpdated(invoice)
+      });
+
+      const deletedSub = this.socketService.onInvoiceDeleted().subscribe({
+        next: (invoiceId) => this.handleInvoiceDeleted(invoiceId)
+      });
+
+      this.socketSubscriptions.push(createdSub, updatedSub, deletedSub);
+
+    } else if (this.selectedInvoiceType === 'purchases') {
+      // Eventos para facturas de COMPRA
+      const createdSub = this.socketService.onBillCreated().subscribe({
+        next: (bill) => this.handleInvoiceCreated(bill)
+      });
+
+      const updatedSub = this.socketService.onBillUpdated().subscribe({
+        next: (bill) => this.handleInvoiceUpdated(bill)
+      });
+
+      const deletedSub = this.socketService.onBillDeleted().subscribe({
+        next: (billId) => this.handleInvoiceDeleted(billId)
+      });
+
+      this.socketSubscriptions.push(createdSub, updatedSub, deletedSub);
+    }
+  }
+
+  disconnectWebSocket() {
+    // Salir de la sala actual
+    if (this.selectedStore && this.selectedInvoiceType) {
+      this.socketService.leaveRoom(this.selectedStore, this.selectedInvoiceType);
+    }
+
+    // Desuscribirse de todos los eventos
+    this.socketSubscriptions.forEach(sub => sub.unsubscribe());
+    this.socketSubscriptions = [];
+
+    // Desconectar socket
+    this.socketService.disconnect();
+  }
+
+  handleInvoiceCreated(invoice: any) {
+    // Agregar la nueva factura al inicio del array
+    this.allInvoices.unshift(invoice);
+    this.totalRecords = this.allInvoices.length;
+
+    // Marcar como nueva para animación
+    this.newInvoiceIds.push(invoice.id);
+
+    // Aplicar filtro si existe
+    if (this.filterValue && this.filterValue.trim() !== '') {
+      this.filterInvoicesLocal();
+    } else {
+      this.invoices = this.allInvoices.slice(0, this.rows);
+    }
+
+    // Forzar detección de cambios
+    this.cdr.detectChanges();
+
+    // Remover animación después de 2 segundos
+    setTimeout(() => {
+      const index = this.newInvoiceIds.indexOf(invoice.id);
+      if (index > -1) {
+        this.newInvoiceIds.splice(index, 1);
+      }
+      this.cdr.detectChanges();
+    }, 2000);
+  }
+
+  handleInvoiceUpdated(invoice: any) {
+    // Encontrar y actualizar la factura existente
+    const index = this.allInvoices.findIndex(inv => inv.id === invoice.id);
+    if (index !== -1) {
+      this.allInvoices[index] = invoice;
+
+      // Aplicar filtro si existe
+      if (this.filterValue && this.filterValue.trim() !== '') {
+        this.filterInvoicesLocal();
+      } else {
+        this.invoices = this.allInvoices.slice(this.page * this.rows, (this.page + 1) * this.rows);
+      }
+
+      // Forzar detección de cambios
+      this.cdr.detectChanges();
+    }
+  }
+
+  handleInvoiceDeleted(invoiceId: string) {
+    // Marcar como eliminada para animación ANTES de eliminar
+    this.deletedInvoiceIds.push(invoiceId);
+
+    // Forzar detección de cambios para mostrar animación
+    this.cdr.detectChanges();
+
+    // Esperar a que la animación se vea antes de eliminar
+    setTimeout(() => {
+      // Eliminar la factura del array
+      this.allInvoices = this.allInvoices.filter(inv => inv.id !== invoiceId);
+      this.totalRecords = this.allInvoices.length;
+
+      // Aplicar filtro si existe
+      if (this.filterValue && this.filterValue.trim() !== '') {
+        this.filterInvoicesLocal();
+      } else {
+        this.invoices = this.allInvoices.slice(this.page * this.rows, (this.page + 1) * this.rows);
+      }
+
+      // Remover de la lista de eliminadas
+      const index = this.deletedInvoiceIds.indexOf(invoiceId);
+      if (index > -1) {
+        this.deletedInvoiceIds.splice(index, 1);
+      }
+
+      // Forzar detección de cambios
+      this.cdr.detectChanges();
+    }, 800); // Duración de la animación
   }
 
   loadInvoices() {
@@ -133,20 +304,64 @@ export class InvoicesComponent implements OnInit {
   }
 
   onInvoiceTypeChange() {
+    // Guardar sala anterior antes de cambiar
+    const oldStore = this.selectedStore;
+    const oldType = this.selectedInvoiceType;
+
     this.page = 0;
     // NO borramos el filterValue para mantener la búsqueda
     this.allInvoices = [];
     this.invoices = [];
     this.totalRecords = 0;
+
+    // Guardar en sessionStorage (selectedInvoiceType ya cambió por el ngModel)
+    sessionStorage.setItem('selectedInvoiceType', this.selectedInvoiceType);
+
+    // Salir de la sala anterior
+    if (oldStore && oldType) {
+      this.socketService.leaveRoom(oldStore, oldType);
+    }
+
+    // Limpiar suscripciones
+    this.socketSubscriptions.forEach(sub => sub.unsubscribe());
+    this.socketSubscriptions = [];
+
+    // Conectar a la nueva sala
+    if (this.selectedStore && this.selectedInvoiceType) {
+      this.connectWebSocket();
+    }
+
     this.loadInvoices();
   }
 
   onStoreChange() {
+    // Guardar sala anterior antes de cambiar
+    const oldStore = this.selectedStore;
+    const oldType = this.selectedInvoiceType;
+
     this.page = 0;
     // NO borramos el filterValue para mantener la búsqueda
     this.allInvoices = [];
     this.invoices = [];
     this.totalRecords = 0;
+
+    // Guardar en sessionStorage (selectedStore ya cambió por el ngModel)
+    sessionStorage.setItem('selectedStore', this.selectedStore);
+
+    // Salir de la sala anterior
+    if (oldStore && oldType) {
+      this.socketService.leaveRoom(oldStore, oldType);
+    }
+
+    // Limpiar suscripciones
+    this.socketSubscriptions.forEach(sub => sub.unsubscribe());
+    this.socketSubscriptions = [];
+
+    // Conectar a la nueva sala
+    if (this.selectedStore && this.selectedInvoiceType) {
+      this.connectWebSocket();
+    }
+
     this.loadInvoices();
   }
 
@@ -164,7 +379,7 @@ export class InvoicesComponent implements OnInit {
       const filterLower = trimmedFilter.toLowerCase();
 
       if (this.selectedInvoiceType === 'sales') {
-        // Filtro para facturas de venta (ID, Cliente, Item, Anotación, Descripción)
+        // Filtro para facturas de venta (ID, Cliente, Item, Anotación, Descripción, Vendedor)
         filtered = this.allInvoices.filter(
           (inv) =>
             // Buscar por ID
@@ -189,7 +404,10 @@ export class InvoicesComponent implements OnInit {
                 (item: any) =>
                   item.description &&
                   item.description.toLowerCase().includes(filterLower)
-              ))
+              )) ||
+            // Buscar por Vendedor
+            (inv.seller?.name &&
+              inv.seller.name.toLowerCase().includes(filterLower))
         );
       } else {
         // Filtro para facturas de compra (ID, Proveedor, Items, Observaciones, Descripción)
@@ -479,5 +697,33 @@ export class InvoicesComponent implements OnInit {
   clearMassiveSearchFilter() {
     this.filterInvoicesLocal();
     this.closeMassiveSearchModal();
+  }
+
+  isNewInvoice(invoiceId: string): boolean {
+    return this.newInvoiceIds.includes(invoiceId);
+  }
+
+  isDeletedInvoice(invoiceId: string): boolean {
+    return this.deletedInvoiceIds.includes(invoiceId);
+  }
+
+  getStatusText(status: string): string {
+    const statusMap: { [key: string]: string } = {
+      'draft': 'Borrador',
+      'closed': 'Cobrada',
+      'open': 'Por cobrar',
+      'void': 'Anulada'
+    };
+    return statusMap[status] || status;
+  }
+
+  getStatusColor(status: string): { bg: string, text: string } {
+    const colorMap: { [key: string]: { bg: string, text: string } } = {
+      'void': { bg: 'rgb(241, 245, 249)', text: 'rgb(128, 141, 160)' },      // Anulada
+      'draft': { bg: 'rgb(224, 231, 255)', text: 'rgb(67, 56, 202)' },       // Borrador
+      'closed': { bg: 'rgb(220, 252, 231)', text: 'rgb(21, 128, 61)' },      // Cobrada
+      'open': { bg: 'rgb(254, 243, 199)', text: 'rgb(180, 83, 9)' }          // Por cobrar
+    };
+    return colorMap[status] || { bg: 'rgb(241, 245, 249)', text: 'rgb(128, 141, 160)' };
   }
 }
