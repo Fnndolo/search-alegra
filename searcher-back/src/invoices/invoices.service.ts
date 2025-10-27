@@ -92,11 +92,12 @@ export class InvoicesService {
       });
     }
 
-    // Obtener las facturas de la base de datos ordenadas por ID descendente, luego por fecha
-    const invoices = await this.invoiceRepository.find({
-      where: { store },
-      order: { id: 'DESC', datetime: 'DESC', date: 'DESC' },
-    });
+    // Obtener las facturas de la base de datos ordenadas por el ID de la factura (data->id) descendente
+    const invoices = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .where('invoice.store = :store', { store })
+      .orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
+      .getMany();
 
     return {
       updating: syncStatus.isSyncing,
@@ -338,11 +339,15 @@ export class InvoicesService {
   private async fetchNewInvoices(store: string): Promise<void> {
     const credentials = this.storeCredentialsService.getCredentials(store);
 
-    // Obtener la última factura de la base de datos
-    const lastInvoice = await this.invoiceRepository.findOne({
-      where: { store },
-      order: { datetime: 'DESC', date: 'DESC', id: 'DESC' }
-    });
+    // Obtener la última factura de la base de datos (por fecha y por ID de factura)
+    const lastInvoice = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .where('invoice.store = :store', { store })
+      .orderBy('invoice.datetime', 'DESC')
+      .addOrderBy('invoice.date', 'DESC')
+      .addOrderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
+      .limit(1)
+      .getOne();
 
     if (!lastInvoice) {
       this.logger.log(`No hay facturas previas para ${store}, haciendo carga completa`);
@@ -612,11 +617,12 @@ export class InvoicesService {
     const batchSize = 10; // Procesar 10 facturas a la vez
     let processed = 0;
 
-    // Obtener todas las facturas que tienen pagos
-    const allInvoices = await this.invoiceRepository.find({
-      where: { store },
-      order: { id: 'DESC' }
-    });
+    // Obtener todas las facturas ordenadas por ID de factura (data->id)
+    const allInvoices = await this.invoiceRepository
+      .createQueryBuilder('invoice')
+      .where('invoice.store = :store', { store })
+      .orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
+      .getMany();
 
     this.logger.log(`📊 Total de facturas a procesar: ${allInvoices.length}`);
 
