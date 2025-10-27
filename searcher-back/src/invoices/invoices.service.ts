@@ -536,13 +536,12 @@ export class InvoicesService {
     this.logger.log(`🗑️ Eliminando factura ${invoiceId} de ${this.storeCredentialsService.getStoreDisplayName(store)}`);
 
     try {
-      // Buscar la factura en la base de datos
-      const invoice = await this.invoiceRepository.findOne({
-        where: {
-          store,
-          data: { id: invoiceId } as any
-        }
-      });
+      // Buscar la factura en la base de datos usando query builder para JSONB
+      const invoice = await this.invoiceRepository
+        .createQueryBuilder('invoice')
+        .where('invoice.store = :store', { store })
+        .andWhere("invoice.data->>'id' = :invoiceId", { invoiceId: String(invoiceId) })
+        .getOne();
 
       if (invoice) {
         await this.invoiceRepository.remove(invoice);

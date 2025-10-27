@@ -538,13 +538,12 @@ export class BillsDbService {
     this.logger.log(`🗑️ Eliminando cuenta por pagar ${billId} de ${this.storeCredentialsService.getStoreDisplayName(store)}`);
 
     try {
-      // Buscar la bill en la base de datos
-      const bill = await this.billRepository.findOne({
-        where: {
-          store,
-          data: { id: billId } as any
-        }
-      });
+      // Buscar la bill en la base de datos usando query builder para JSONB
+      const bill = await this.billRepository
+        .createQueryBuilder('bill')
+        .where('bill.store = :store', { store })
+        .andWhere("bill.data->>'id' = :billId", { billId: String(billId) })
+        .getOne();
 
       if (bill) {
         await this.billRepository.remove(bill);
