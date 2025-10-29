@@ -69,6 +69,13 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   massiveSearchResults: any = null;
   massiveSearchLoading = false;
 
+  // Propiedades para exportación de datos
+  showExportModal = false;
+  exportStartDate = '';
+  exportEndDate = '';
+  exportFormat: 'excel' | 'csv' = 'excel';
+  exportLoading = false;
+
   constructor(
     private invoiceService: InvoiceService,
     private socketService: SocketService,
@@ -725,5 +732,261 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       'open': { bg: 'rgb(254, 243, 199)', text: 'rgb(180, 83, 9)' }          // Por cobrar
     };
     return colorMap[status] || { bg: 'rgb(241, 245, 249)', text: 'rgb(128, 141, 160)' };
+  }
+
+  // =========================================
+  // Métodos para Exportación de Datos
+  // =========================================
+
+  openExportModal() {
+    // Configurar fechas predeterminadas (último mes)
+    const today = new Date();
+    const lastMonth = new Date();
+    lastMonth.setMonth(today.getMonth() - 1);
+    
+    this.exportEndDate = this.formatDateForInput(today);
+    this.exportStartDate = this.formatDateForInput(lastMonth);
+    this.exportFormat = 'excel';
+    this.showExportModal = true;
+  }
+
+  closeExportModal() {
+    this.showExportModal = false;
+    this.exportStartDate = '';
+    this.exportEndDate = '';
+    this.exportLoading = false;
+  }
+
+  formatDateForInput(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  performExport() {
+    if (!this.exportStartDate || !this.exportEndDate) {
+      alert('Por favor selecciona un rango de fechas válido');
+      return;
+    }
+
+    const startDate = new Date(this.exportStartDate);
+    const endDate = new Date(this.exportEndDate);
+
+    if (startDate > endDate) {
+      alert('La fecha de inicio debe ser anterior a la fecha de fin');
+      return;
+    }
+
+    this.exportLoading = true;
+
+    // Filtrar facturas por rango de fechas
+    const filteredInvoices = this.allInvoices.filter(invoice => {
+      const invoiceDate = new Date(invoice.date);
+      return invoiceDate >= startDate && invoiceDate <= endDate;
+    });
+
+    if (filteredInvoices.length === 0) {
+      alert('No se encontraron facturas en el rango de fechas seleccionado');
+      this.exportLoading = false;
+      return;
+    }
+
+    // Exportar según el formato seleccionado
+    if (this.exportFormat === 'excel') {
+      this.exportToExcel(filteredInvoices);
+    } else {
+      this.exportToCSV(filteredInvoices);
+    }
+
+    this.exportLoading = false;
+    this.closeExportModal();
+  }
+
+  exportToExcel(data: any[]) {
+    // Preparar datos para exportación
+    const exportData = this.prepareExportData(data);
+    
+    // Crear el archivo Excel manualmente (sin librerías externas)
+    const csvContent = this.convertToCSV(exportData);
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    // Generar nombre de archivo
+    const fileName = `facturas_${this.selectedStore}_${this.selectedInvoiceType}_${this.exportStartDate}_${this.exportEndDate}.csv`;
+    
+    // Descargar archivo
+    this.downloadFile(blob, fileName);
+  }
+
+  exportToCSV(data: any[]) {
+    // Preparar datos para exportación
+    const exportData = this.prepareExportData(data);
+    
+    // Convertir a CSV
+    const csvContent = this.convertToCSV(exportData);
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    
+    // Generar nombre de archivo
+    const fileName = `facturas_${this.selectedStore}_${this.selectedInvoiceType}_${this.exportStartDate}_${this.exportEndDate}.csv`;
+    
+    // Descargar archivo
+    this.downloadFile(blob, fileName);
+  }
+
+  prepareExportData(invoices: any[]): any[] {
+    // Función auxiliar para agrupar items por nombre
+    const groupItems = (items: any[]) => {
+      if (!items || items.length === 0) return [];
+      
+      const grouped = new Map<string, { name: string, quantity: number, price: number }>();
+      
+      items.forEach(item => {
+        const name = item.name || '';
+        if (grouped.has(name)) {
+          const existing = grouped.get(name)!;
+          existing.quantity += parseInt(item.quantity || 0);
+        } else {
+          grouped.set(name, {
+            name: name,
+            quantity: parseInt(item.quantity || 0),
+            price: item.price || 0
+          });
+        }
+      });
+      
+      return Array.from(grouped.values());
+    };
+
+    // Encontrar el número máximo de items únicos en todas las facturas
+    let maxItems = 0;
+    invoices.forEach((inv: any) => {
+      const items = this.selectedInvoiceType === 'sales' ? inv.items : inv.purchases?.items;
+      const groupedItems = groupItems(items || []);
+      if (groupedItems.length > maxItems) {
+        maxItems = groupedItems.length;
+      }
+    });
+
+    if (this.selectedInvoiceType === 'sales') {
+      // Datos completos para facturas de venta
+      return invoices.map(inv => {
+        const row: any = {
+          'Fecha': inv.date,
+          'Número': inv.numberTemplate?.number || '',
+          'Cliente': inv.client?.name || '',
+          'Identificación Cliente': inv.client?.identification || '',
+          'Teléfono Cliente': inv.client?.phonePrimary || inv.client?.phonePrimary || '',
+          'Email Cliente': inv.client?.email || '',
+          'Dirección Cliente': inv.client?.address?.address || '',
+          'Ciudad Cliente': inv.client?.address?.city || ''
+        };
+
+        // Agrupar items y agregar columnas dinámicas
+        const groupedItems = groupItems(inv.items || []);
+        for (let i = 0; i < maxItems; i++) {
+          const item = groupedItems[i];
+          row[`Item ${i + 1}`] = item?.name || '';
+          row[`Cantidad Item ${i + 1}`] = item?.quantity || '';
+          row[`Precio Item ${i + 1}`] = item?.price || '';
+        }
+
+        // Agregar el resto de campos
+        return {
+          ...row,
+          'Anotación': inv.anotation || '',
+          'Descripción Items': inv.items?.map((i: any) => i.description).join(' | ') || '',
+          'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
+          'Vendedor': inv.seller?.name || 'N/A',
+          'Estado': this.getStatusText(inv.status),
+          'Subtotal': inv.subtotal || 0,
+          'Total': inv.total || 0,
+          'Moneda': inv.currency?.code || 'COP',
+          'Términos de Pago': inv.term || '',
+          'Fecha Vencimiento': inv.dueDate || ''
+        };
+      });
+    } else {
+      // Datos completos para facturas de compra
+      return invoices.map(inv => {
+        const row: any = {
+          'Fecha': inv.date,
+          'Número': inv.numberTemplate?.number || '',
+          'Proveedor': inv.provider?.name || '',
+          'Identificación Proveedor': inv.provider?.identification || '',
+          'Teléfono Proveedor': inv.provider?.phonePrimary || '',
+          'Email Proveedor': inv.provider?.email || '',
+          'Dirección Proveedor': inv.provider?.address?.address || '',
+          'Ciudad Proveedor': inv.provider?.address?.city || ''
+        };
+
+        // Agrupar items y agregar columnas dinámicas
+        const groupedItems = groupItems(inv.purchases?.items || []);
+        for (let i = 0; i < maxItems; i++) {
+          const item = groupedItems[i];
+          row[`Item ${i + 1}`] = item?.name || '';
+          row[`Cantidad Item ${i + 1}`] = item?.quantity || '';
+          row[`Precio Item ${i + 1}`] = item?.price || '';
+        }
+
+        // Agregar el resto de campos
+        return {
+          ...row,
+          'Anotación': inv.anotation || '',
+          'Observaciones': inv.observations || '',
+          'Descripción Items': inv.purchases?.items?.map((i: any) => i.description).join(' | ') || '',
+          'Estado': inv.status || '',
+          'Subtotal': inv.subtotal || 0,
+          'Impuestos': inv.tax || 0,
+          'Total': inv.total || 0,
+          'Moneda': inv.currency?.code || 'COP',
+          'Términos de Pago': inv.term || '',
+          'Fecha Vencimiento': inv.dueDate || '',
+          'ID Factura': inv.id || ''
+        };
+      });
+    }
+  }
+
+  convertToCSV(data: any[]): string {
+    if (data.length === 0) return '';
+
+    // Obtener encabezados
+    const headers = Object.keys(data[0]);
+    
+    // Crear filas
+    const rows = data.map(row => {
+      return headers.map(header => {
+        const value = row[header];
+        // Escapar comillas y valores con comas
+        const stringValue = String(value || '');
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n')) {
+          return `"${stringValue.replace(/"/g, '""')}"`;
+        }
+        return stringValue;
+      }).join(',');
+    });
+
+    // Combinar encabezados y filas
+    return [headers.join(','), ...rows].join('\n');
+  }
+
+  downloadFile(blob: Blob, fileName: string) {
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', fileName);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  getSelectedStoreName(): string {
+    return this.stores.find(s => s.value === this.selectedStore)?.label || 'No seleccionada';
+  }
+
+  getSelectedTypeName(): string {
+    return this.invoiceTypes.find(t => t.value === this.selectedInvoiceType)?.label || 'No seleccionado';
   }
 }
