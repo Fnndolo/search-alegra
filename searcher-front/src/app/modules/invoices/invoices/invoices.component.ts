@@ -11,6 +11,7 @@ import { ButtonModule } from 'primeng/button';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
 import { Subscription } from 'rxjs';
+import * as XLSX from 'xlsx';
 
 @Component({
   selector: 'app-invoices',
@@ -73,7 +74,6 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   showExportModal = false;
   exportStartDate = '';
   exportEndDate = '';
-  exportFormat: 'excel' | 'csv' = 'excel';
   exportLoading = false;
 
   constructor(
@@ -386,7 +386,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       const filterLower = trimmedFilter.toLowerCase();
 
       if (this.selectedInvoiceType === 'sales') {
-        // Filtro para facturas de venta (ID, Cliente, Item, Anotación, Descripción, Vendedor)
+        // Filtro para facturas de venta (ID, Cliente, Cédula, Item, Anotación, Descripción, Vendedor)
         filtered = this.allInvoices.filter(
           (inv) =>
             // Buscar por ID
@@ -395,6 +395,9 @@ export class InvoicesComponent implements OnInit, OnDestroy {
             // Buscar por Cliente
             (inv.client?.name &&
               inv.client.name.toLowerCase().includes(filterLower)) ||
+            // Buscar por Cédula
+            (inv.client?.identification &&
+              inv.client.identification.toString().toLowerCase().includes(filterLower)) ||
             // Buscar por Item (nombre)
             (inv.items &&
               inv.items.some(
@@ -743,10 +746,9 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     const today = new Date();
     const lastMonth = new Date();
     lastMonth.setMonth(today.getMonth() - 1);
-    
+
     this.exportEndDate = this.formatDateForInput(today);
     this.exportStartDate = this.formatDateForInput(lastMonth);
-    this.exportFormat = 'excel';
     this.showExportModal = true;
   }
 
@@ -781,10 +783,15 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     this.exportLoading = true;
 
     // Filtrar facturas por rango de fechas
-    const filteredInvoices = this.allInvoices.filter(invoice => {
+    let filteredInvoices = this.allInvoices.filter(invoice => {
       const invoiceDate = new Date(invoice.date);
       return invoiceDate >= startDate && invoiceDate <= endDate;
     });
+
+    // Si son facturas de venta, excluir las anuladas
+    if (this.selectedInvoiceType === 'sales') {
+      filteredInvoices = filteredInvoices.filter(invoice => invoice.status !== 'void');
+    }
 
     if (filteredInvoices.length === 0) {
       alert('No se encontraron facturas en el rango de fechas seleccionado');
@@ -792,12 +799,8 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Exportar según el formato seleccionado
-    if (this.exportFormat === 'excel') {
-      this.exportToExcel(filteredInvoices);
-    } else {
-      this.exportToCSV(filteredInvoices);
-    }
+    // Exportar en formato Excel
+    this.exportToExcel(filteredInvoices);
 
     this.exportLoading = false;
     this.closeExportModal();
@@ -806,40 +809,51 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   exportToExcel(data: any[]) {
     // Preparar datos para exportación
     const exportData = this.prepareExportData(data);
-    
-    // Crear el archivo Excel manualmente (sin librerías externas)
-    const csvContent = this.convertToCSV(exportData);
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    
-    // Generar nombre de archivo
-    const fileName = `facturas_${this.selectedStore}_${this.selectedInvoiceType}_${this.exportStartDate}_${this.exportEndDate}.csv`;
-    
-    // Descargar archivo
-    this.downloadFile(blob, fileName);
-  }
 
-  exportToCSV(data: any[]) {
-    // Preparar datos para exportación
-    const exportData = this.prepareExportData(data);
-    
-    // Convertir a CSV
-    const csvContent = this.convertToCSV(exportData);
-    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    
+    // Crear hoja de trabajo
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+
+    // Aplicar filtros automáticos a los encabezados
+    const range = XLSX.utils.decode_range(worksheet['!ref']!);
+    worksheet['!autofilter'] = { ref: XLSX.utils.encode_range(range) };
+
+    // Ajustar ancho de columnas dinámicamente según el tipo de factura
+    if (this.selectedInvoiceType === 'purchases') {
+      const colWidths = [
+        { wch: 12 },  // Fecha
+        { wch: 15 },  // Número Factura
+        { wch: 30 },  // Proveedor
+        { wch: 40 },  // Item
+        { wch: 10 },  // Cantidad
+        { wch: 50 },  // Descripción Item
+        { wch: 30 },  // Anotación
+        { wch: 25 }   // Consecutivo interno (ALEGRA)
+      ];
+      worksheet['!cols'] = colWidths;
+    } else {
+      // Para facturas de venta, ajustar automáticamente todas las columnas
+      const colCount = Object.keys(exportData[0] || {}).length;
+      worksheet['!cols'] = Array(colCount).fill({ wch: 15 });
+    }
+
+    // Crear libro de trabajo
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Facturas');
+
     // Generar nombre de archivo
-    const fileName = `facturas_${this.selectedStore}_${this.selectedInvoiceType}_${this.exportStartDate}_${this.exportEndDate}.csv`;
-    
-    // Descargar archivo
-    this.downloadFile(blob, fileName);
+    const fileName = `facturas_${this.selectedStore}_${this.selectedInvoiceType}_${this.exportStartDate}_${this.exportEndDate}.xlsx`;
+
+    // Descargar archivo Excel
+    XLSX.writeFile(workbook, fileName);
   }
 
   prepareExportData(invoices: any[]): any[] {
     // Función auxiliar para agrupar items por nombre
     const groupItems = (items: any[]) => {
       if (!items || items.length === 0) return [];
-      
-      const grouped = new Map<string, { name: string, quantity: number, price: number }>();
-      
+
+      const grouped = new Map<string, { name: string, quantity: number, price: number, description: string }>();
+
       items.forEach(item => {
         const name = item.name || '';
         if (grouped.has(name)) {
@@ -849,26 +863,26 @@ export class InvoicesComponent implements OnInit, OnDestroy {
           grouped.set(name, {
             name: name,
             quantity: parseInt(item.quantity || 0),
-            price: item.price || 0
+            price: item.price || 0,
+            description: item.description || ''
           });
         }
       });
-      
+
       return Array.from(grouped.values());
     };
 
-    // Encontrar el número máximo de items únicos en todas las facturas
-    let maxItems = 0;
-    invoices.forEach((inv: any) => {
-      const items = this.selectedInvoiceType === 'sales' ? inv.items : inv.purchases?.items;
-      const groupedItems = groupItems(items || []);
-      if (groupedItems.length > maxItems) {
-        maxItems = groupedItems.length;
-      }
-    });
-
     if (this.selectedInvoiceType === 'sales') {
-      // Datos completos para facturas de venta
+      // Encontrar el número máximo de items únicos en todas las facturas
+      let maxItems = 0;
+      invoices.forEach((inv: any) => {
+        const groupedItems = groupItems(inv.items || []);
+        if (groupedItems.length > maxItems) {
+          maxItems = groupedItems.length;
+        }
+      });
+
+      // Datos completos para facturas de venta (mantener formato original con columnas)
       return invoices.map(inv => {
         const row: any = {
           'Fecha': inv.date,
@@ -906,44 +920,43 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         };
       });
     } else {
-      // Datos completos para facturas de compra
-      return invoices.map(inv => {
-        const row: any = {
-          'Fecha': inv.date,
-          'Número': inv.numberTemplate?.number || '',
-          'Proveedor': inv.provider?.name || '',
-          'Identificación Proveedor': inv.provider?.identification || '',
-          'Teléfono Proveedor': inv.provider?.phonePrimary || '',
-          'Email Proveedor': inv.provider?.email || '',
-          'Dirección Proveedor': inv.provider?.address?.address || '',
-          'Ciudad Proveedor': inv.provider?.address?.city || ''
-        };
+      // Datos completos para facturas de compra - NUEVO FORMATO CON UNA FILA POR ITEM
+      const exportRows: any[] = [];
 
-        // Agrupar items y agregar columnas dinámicas
-        const groupedItems = groupItems(inv.purchases?.items || []);
-        for (let i = 0; i < maxItems; i++) {
-          const item = groupedItems[i];
-          row[`Item ${i + 1}`] = item?.name || '';
-          row[`Cantidad Item ${i + 1}`] = item?.quantity || '';
-          row[`Precio Item ${i + 1}`] = item?.price || '';
+      invoices.forEach(inv => {
+        const items = inv.purchases?.items || [];
+        const groupedItems = groupItems(items);
+
+        // Si no hay items, crear una fila con los datos de la factura sin items
+        if (groupedItems.length === 0) {
+          exportRows.push({
+            'Fecha': inv.date,
+            'Número Factura': inv.numberTemplate?.number || '',
+            'Proveedor': inv.provider?.name || '',
+            'Item': '',
+            'Cantidad': '',
+            'Descripción Item': '',
+            'Anotación': inv.anotation || '',
+            'Consecutivo interno (ALEGRA)': inv.id || ''
+          });
+        } else {
+          // Crear una fila por cada item
+          groupedItems.forEach(item => {
+            exportRows.push({
+              'Fecha': inv.date,
+              'Número Factura': inv.numberTemplate?.number || '',
+              'Proveedor': inv.provider?.name || '',
+              'Item': item.name,
+              'Cantidad': item.quantity,
+              'Descripción Item': item.description,
+              'Anotación': inv.anotation || '',
+              'Consecutivo interno (ALEGRA)': inv.id || ''
+            });
+          });
         }
-
-        // Agregar el resto de campos
-        return {
-          ...row,
-          'Anotación': inv.anotation || '',
-          'Observaciones': inv.observations || '',
-          'Descripción Items': inv.purchases?.items?.map((i: any) => i.description).join(' | ') || '',
-          'Estado': inv.status || '',
-          'Subtotal': inv.subtotal || 0,
-          'Impuestos': inv.tax || 0,
-          'Total': inv.total || 0,
-          'Moneda': inv.currency?.code || 'COP',
-          'Términos de Pago': inv.term || '',
-          'Fecha Vencimiento': inv.dueDate || '',
-          'ID Factura': inv.id || ''
-        };
       });
+
+      return exportRows;
     }
   }
 
@@ -952,7 +965,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
 
     // Obtener encabezados
     const headers = Object.keys(data[0]);
-    
+
     // Crear filas
     const rows = data.map(row => {
       return headers.map(header => {

@@ -35,7 +35,7 @@
         <input
           type="text"
           pInputText
-          placeholder="Buscar por ID, cliente/proveedor, item, vendedor, anotación o descripción"
+          placeholder="Buscar por ID, cliente/proveedor, cédula, item, vendedor, anotación o descripción"
           [(ngModel)]="filterValue"
           (input)="onFilterChange()"
           class="p-inputtext !border-2 !border-blue-700 !text-gray-800 !bg-white !placeholder-gray-400 hover:!bg-blue-50 !transition !font-medium !rounded-lg !px-4 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !w-full md:!w-80 !shadow-sm"
@@ -103,6 +103,7 @@
           <th class="!px-6 !py-4 !font-bold !text-left">
             {{ selectedInvoiceType === 'sales' ? 'Cliente' : 'Proveedor' }}
           </th>
+          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Cédula</th>
           <th class="!px-6 !py-4 !font-bold !text-left">
             {{ selectedInvoiceType === 'sales' ? 'Item' : 'Items' }}
           </th>
@@ -124,6 +125,9 @@
           <td class="!px-6 !py-4 !font-mono !font-bold !text-blue-900">{{ invoice.numberTemplate.number }}</td>
           <td class="!px-6 !py-4 !text-gray-900">
             {{ selectedInvoiceType === 'sales' ? invoice.client?.name : invoice.provider?.name }}
+          </td>
+          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
+            {{ invoice.client?.identification || 'N/A' }}
           </td>
           <td class="!px-6 !py-4 !text-gray-700">
             <span *ngIf="selectedInvoiceType === 'sales'">
@@ -387,35 +391,12 @@
         </div>
       </div>
 
-      <!-- Selector de Formato -->
-      <div class="space-y-2">
-        <h3 class="text-lg font-semibold text-gray-800">📁 Formato de Exportación</h3>
-
-        <div class="flex gap-4">
-          <!-- Opción Excel/CSV -->
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="exportFormat"
-              value="excel"
-              [(ngModel)]="exportFormat"
-              class="w-4 h-4 text-purple-600"
-            />
-            <span class="text-gray-700">📊 Excel (CSV)</span>
-          </label>
-
-          <!-- Opción CSV puro -->
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input
-              type="radio"
-              name="exportFormat"
-              value="csv"
-              [(ngModel)]="exportFormat"
-              class="w-4 h-4 text-purple-600"
-            />
-            <span class="text-gray-700">📄 CSV</span>
-          </label>
-        </div>
+      <!-- Información de formato -->
+      <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
+        <h3 class="text-lg font-semibold text-purple-800">📁 Formato de Exportación</h3>
+        <p class="text-purple-700 text-sm mt-2">
+          📊 Los datos se exportarán en formato <strong>Excel (.xlsx)</strong> con filtros automáticos aplicados en los encabezados.
+        </p>
       </div>
 
       <!-- Botones de acción -->
