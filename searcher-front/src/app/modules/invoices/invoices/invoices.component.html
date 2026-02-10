@@ -130,10 +130,8 @@
           <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
             {{ invoice.client?.identification || 'N/A' }}
           </td>
-          <td *ngIf="selectedStore === 'todas'" class="!px-6 !py-4">
-            <span class="!px-3 !py-1 !bg-blue-100 !text-blue-800 !rounded-full !text-xs !font-semibold">
-              {{ invoice.tienda }}
-            </span>
+          <td *ngIf="selectedStore === 'todas'" class="!px-6 !py-4 !text-gray-700 !uppercase whitespace-nowrap">
+            {{ invoice.tienda }}
           </td>
           <td class="!px-6 !py-4 !text-gray-700">
             <span *ngIf="selectedInvoiceType === 'sales'">
