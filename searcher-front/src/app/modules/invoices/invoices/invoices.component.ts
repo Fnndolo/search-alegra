@@ -60,7 +60,8 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     { label: 'Smart Gadgets Pasto', value: 'pasto' },
     { label: 'Smart Gadgets Medellín', value: 'medellin' },
     { label: 'Smart Gadgets Armenia', value: 'armenia' },
-    { label: 'Smart Gadgets Pereira', value: 'pereira' }
+    { label: 'Smart Gadgets Pereira', value: 'pereira' },
+    { label: 'Todas las tiendas', value: 'todas' }
   ];
   selectedStore = '';
 
@@ -218,7 +219,11 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     }
   }
 
-  handleInvoiceDeleted(invoiceId: string) {
+  handleInvoiceDeleted(data: any) {
+    // Manejar tanto el formato simple (ID) como el formato de "todas" (objeto)
+    const invoiceId = typeof data === 'object' ? data.id : data;
+    const storeKey = typeof data === 'object' ? data.storeKey : this.selectedStore;
+
     // Marcar como eliminada para animación ANTES de eliminar
     this.deletedInvoiceIds.push(invoiceId);
 
@@ -228,7 +233,14 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     // Esperar a que la animación se vea antes de eliminar
     setTimeout(() => {
       // Eliminar la factura del array
-      this.allInvoices = this.allInvoices.filter(inv => inv.id !== invoiceId);
+      this.allInvoices = this.allInvoices.filter(inv => {
+        if (this.selectedStore === 'todas') {
+          // Para "todas", comparar ID y storeKey
+          return !(inv.id === invoiceId && inv.storeKey === storeKey);
+        }
+        // Para tienda específica, solo comparar ID
+        return inv.id !== invoiceId;
+      });
       this.totalRecords = this.allInvoices.length;
 
       // Aplicar filtro si existe
@@ -386,7 +398,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       const filterLower = trimmedFilter.toLowerCase();
 
       if (this.selectedInvoiceType === 'sales') {
-        // Filtro para facturas de venta (ID, Cliente, Cédula, Item, Anotación, Descripción, Vendedor)
+        // Filtro para facturas de venta (ID, Cliente, Cédula, Tienda, Item, Anotación, Descripción, Vendedor)
         filtered = this.allInvoices.filter(
           (inv) =>
             // Buscar por ID
@@ -398,6 +410,9 @@ export class InvoicesComponent implements OnInit, OnDestroy {
             // Buscar por Cédula
             (inv.client?.identification &&
               inv.client.identification.toString().toLowerCase().includes(filterLower)) ||
+            // Buscar por Tienda (solo cuando selectedStore === 'todas')
+            (this.selectedStore === 'todas' && inv.tienda &&
+              inv.tienda.toLowerCase().includes(filterLower)) ||
             // Buscar por Item (nombre)
             (inv.items &&
               inv.items.some(
@@ -420,7 +435,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
               inv.seller.name.toLowerCase().includes(filterLower))
         );
       } else {
-        // Filtro para facturas de compra (ID, Proveedor, Items, Observaciones, Descripción)
+        // Filtro para facturas de compra (ID, Proveedor, Tienda, Items, Observaciones, Descripción)
         filtered = this.allInvoices.filter(
           (inv) =>
             // Buscar por ID
@@ -429,6 +444,9 @@ export class InvoicesComponent implements OnInit, OnDestroy {
             // Buscar por Proveedor
             (inv.provider?.name &&
               inv.provider.name.toLowerCase().includes(filterLower)) ||
+            // Buscar por Tienda (solo cuando selectedStore === 'todas')
+            (this.selectedStore === 'todas' && inv.tienda &&
+              inv.tienda.toLowerCase().includes(filterLower)) ||
             // Buscar por Items (nombre)
             (inv.purchases?.items &&
               inv.purchases.items.some(
