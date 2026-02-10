@@ -26,8 +26,8 @@ export class InvoicesController {
 
       const result = await this.invoicesService.getCachedInvoices(store);
       
-      // Si no hay datos, intentar cargar
-      if (result.data.length === 0 && !result.updating) {
+      // Si no hay datos y no es "todas", intentar cargar
+      if (result.data.length === 0 && !result.updating && store?.toLowerCase() !== 'todas') {
         // Forzar carga inicial en el background
         this.invoicesService.updateInvoicesManually(store).catch(error => {
         });
@@ -52,6 +52,10 @@ export class InvoicesController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede actualizar manualmente "todas" las tiendas. Por favor, actualiza cada tienda individualmente.');
+    }
+
     await this.invoicesService.updateInvoicesManually(store);
     return this.invoicesService.getCachedInvoices(store);
   }
@@ -64,6 +68,10 @@ export class InvoicesController {
 
     if (!this.storeCredentialsService.isValidStore(store)) {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede recargar "todas" las tiendas. Por favor, recarga cada tienda individualmente.');
     }
 
     await this.invoicesService.clearCacheAndReload(store);
@@ -80,6 +88,10 @@ export class InvoicesController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede ejecutar "ensure-full-persistence" para "todas" las tiendas. Por favor, ejecuta para cada tienda individualmente.');
+    }
+
     await this.invoicesService.ensureFullDataPersistence(store);
     return { message: `Persistencia completa asegurada para facturas de ${store}` };
   }
@@ -92,6 +104,10 @@ export class InvoicesController {
 
     if (!this.storeCredentialsService.isValidStore(store)) {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede recargar con pagos para "todas" las tiendas. Por favor, recarga cada tienda individualmente.');
     }
 
     // Iniciar el proceso en background

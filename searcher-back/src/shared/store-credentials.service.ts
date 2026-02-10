@@ -47,7 +47,7 @@ export class StoreCredentialsService {
     
     if (!this.isValidStore(normalizedStore)) {
       throw new BadRequestException(
-        `Tienda inválida: ${store}. Las tiendas válidas son: pasto, medellin, armenia, pereira`
+        `Tienda inválida: ${store}. Las tiendas válidas son: pasto, medellin, armenia, pereira, todas`
       );
     }
 
@@ -60,7 +60,7 @@ export class StoreCredentialsService {
   }
 
   isValidStore(store: string): boolean {
-    const validStores = ['pasto', 'medellin', 'armenia', 'pereira'];
+    const validStores = ['pasto', 'medellin', 'armenia', 'pereira', 'todas'];
     return validStores.includes(store?.toLowerCase());
   }
 
@@ -69,13 +69,18 @@ export class StoreCredentialsService {
       'pasto': 'Smart Gadgets Pasto',
       'medellin': 'Smart Gadgets Medellín',
       'armenia': 'Smart Gadgets Armenia',
-      'pereira': 'Smart Gadgets Pereira'
+      'pereira': 'Smart Gadgets Pereira',
+      'todas': 'Todas las tiendas'
     };
     
     return storeNames[store?.toLowerCase()] || store;
   }
 
   getAllValidStores(): string[] {
+    return ['pasto', 'medellin', 'armenia', 'pereira', 'todas'];
+  }
+
+  getAllPhysicalStores(): string[] {
     return ['pasto', 'medellin', 'armenia', 'pereira'];
   }
 }

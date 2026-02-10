@@ -9,6 +9,7 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
+import { StoreCredentialsService } from '../shared/store-credentials.service';
 
 @WebSocketGateway({
   cors: {
@@ -23,6 +24,8 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
   server: Server;
 
   private logger = new Logger('WebsocketsGateway');
+
+  constructor(private readonly storeCredentialsService: StoreCredentialsService) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`✅ Cliente conectado: ${client.id}`);
@@ -65,8 +68,19 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
    */
   emitInvoiceCreated(store: string, invoice: any) {
     const room = `${store}-sales`;
+    
+    // Emitir a la sala específica de la tienda
     this.server.to(room).emit('invoice:created', invoice);
     this.logger.log(`✨ Evento invoice:created emitido a sala ${room}`);
+
+    // Emitir también a la sala "todas-sales" con información de tienda
+    const invoiceWithStore = {
+      ...invoice,
+      tienda: this.storeCredentialsService.getStoreDisplayName(store),
+      storeKey: store
+    };
+    this.server.to('todas-sales').emit('invoice:created', invoiceWithStore);
+    this.logger.log(`✨ Evento invoice:created emitido a sala todas-sales con tienda: ${store}`);
   }
 
   /**
@@ -74,8 +88,19 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
    */
   emitInvoiceUpdated(store: string, invoice: any) {
     const room = `${store}-sales`;
+    
+    // Emitir a la sala específica de la tienda
     this.server.to(room).emit('invoice:updated', invoice);
     this.logger.log(`🔄 Evento invoice:updated emitido a sala ${room}`);
+
+    // Emitir también a la sala "todas-sales" con información de tienda
+    const invoiceWithStore = {
+      ...invoice,
+      tienda: this.storeCredentialsService.getStoreDisplayName(store),
+      storeKey: store
+    };
+    this.server.to('todas-sales').emit('invoice:updated', invoiceWithStore);
+    this.logger.log(`🔄 Evento invoice:updated emitido a sala todas-sales con tienda: ${store}`);
   }
 
   /**
@@ -83,8 +108,19 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
    */
   emitInvoiceDeleted(store: string, invoiceId: string | number) {
     const room = `${store}-sales`;
+    
+    // Emitir a la sala específica de la tienda
     this.server.to(room).emit('invoice:deleted', invoiceId);
     this.logger.log(`🗑️ Evento invoice:deleted emitido a sala ${room}`);
+
+    // Emitir también a la sala "todas-sales" con información de tienda
+    const dataWithStore = {
+      id: invoiceId,
+      storeKey: store,
+      tienda: this.storeCredentialsService.getStoreDisplayName(store)
+    };
+    this.server.to('todas-sales').emit('invoice:deleted', dataWithStore);
+    this.logger.log(`🗑️ Evento invoice:deleted emitido a sala todas-sales con tienda: ${store}`);
   }
 
   /**
@@ -92,8 +128,19 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
    */
   emitBillCreated(store: string, bill: any) {
     const room = `${store}-purchases`;
+    
+    // Emitir a la sala específica de la tienda
     this.server.to(room).emit('bill:created', bill);
     this.logger.log(`✨ Evento bill:created emitido a sala ${room}`);
+
+    // Emitir también a la sala "todas-purchases" con información de tienda
+    const billWithStore = {
+      ...bill,
+      tienda: this.storeCredentialsService.getStoreDisplayName(store),
+      storeKey: store
+    };
+    this.server.to('todas-purchases').emit('bill:created', billWithStore);
+    this.logger.log(`✨ Evento bill:created emitido a sala todas-purchases con tienda: ${store}`);
   }
 
   /**
@@ -101,8 +148,19 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
    */
   emitBillUpdated(store: string, bill: any) {
     const room = `${store}-purchases`;
+    
+    // Emitir a la sala específica de la tienda
     this.server.to(room).emit('bill:updated', bill);
     this.logger.log(`🔄 Evento bill:updated emitido a sala ${room}`);
+
+    // Emitir también a la sala "todas-purchases" con información de tienda
+    const billWithStore = {
+      ...bill,
+      tienda: this.storeCredentialsService.getStoreDisplayName(store),
+      storeKey: store
+    };
+    this.server.to('todas-purchases').emit('bill:updated', billWithStore);
+    this.logger.log(`🔄 Evento bill:updated emitido a sala todas-purchases con tienda: ${store}`);
   }
 
   /**
@@ -110,7 +168,18 @@ export class WebsocketsGateway implements OnGatewayConnection, OnGatewayDisconne
    */
   emitBillDeleted(store: string, billId: string | number) {
     const room = `${store}-purchases`;
+    
+    // Emitir a la sala específica de la tienda
     this.server.to(room).emit('bill:deleted', billId);
     this.logger.log(`🗑️ Evento bill:deleted emitido a sala ${room}`);
+
+    // Emitir también a la sala "todas-purchases" con información de tienda
+    const dataWithStore = {
+      id: billId,
+      storeKey: store,
+      tienda: this.storeCredentialsService.getStoreDisplayName(store)
+    };
+    this.server.to('todas-purchases').emit('bill:deleted', dataWithStore);
+    this.logger.log(`🗑️ Evento bill:deleted emitido a sala todas-purchases con tienda: ${store}`);
   }
 }

@@ -92,6 +92,11 @@ export class BillsDbService {
     storeDisplayName: string;
     total: number;
   }> {
+    // Si la tienda es "todas", obtener datos de todas las tiendas
+    if (store?.toLowerCase() === 'todas') {
+      return this.getAllStoresBills();
+    }
+
     // Validar que la tienda sea válida
     this.storeCredentialsService.getCredentials(store);
 
@@ -123,6 +128,67 @@ export class BillsDbService {
       store: store,
       storeDisplayName: this.storeCredentialsService.getStoreDisplayName(store),
       total: syncStatus.totalRecords
+    };
+  }
+
+  /**
+   * Obtiene las bills de todas las tiendas combinadas
+   */
+  async getAllStoresBills(): Promise<{
+    updating: boolean;
+    progress: number;
+    fullyLoaded: boolean;
+    data: any[];
+    store: string;
+    storeDisplayName: string;
+    total: number;
+  }> {
+    const physicalStores = this.storeCredentialsService.getAllPhysicalStores();
+    
+    // Obtener todas las bills de todas las tiendas
+    const allBills = await this.billRepository
+      .createQueryBuilder('bill')
+      .where('bill.store IN (:...stores)', { stores: physicalStores })
+      .orderBy('bill.datetime', 'DESC')
+      .addOrderBy('bill.id', 'DESC')
+      .getMany();
+
+    // Verificar el estado de sincronización de cada tienda
+    const syncStatuses = await Promise.all(
+      physicalStores.map(store => this.getSyncStatus(store))
+    );
+
+    const anyUpdating = syncStatuses.some(status => status.isSyncing);
+    const allFullyLoaded = syncStatuses.every(status => status.isFullyLoaded);
+    const totalRecords = syncStatuses.reduce((sum, status) => sum + status.totalRecords, 0);
+
+    // Inicializar carga para tiendas sin datos
+    syncStatuses.forEach((syncStatus, index) => {
+      const store = physicalStores[index];
+      if ((!syncStatus.isFullyLoaded || syncStatus.totalRecords === 0) && !syncStatus.isSyncing) {
+        this.logger.log(`Iniciando carga inicial de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+        this.initializeDataLoad(store).catch(error => {
+          this.logger.error(`Error en carga inicial de bills para ${store}`, error);
+        });
+      }
+    });
+
+    return {
+      updating: anyUpdating,
+      progress: allBills.length,
+      fullyLoaded: allFullyLoaded,
+      data: allBills.map(bill => {
+        const billData = { ...bill.data };
+        
+        // Agregar la tienda al objeto
+        billData.tienda = this.storeCredentialsService.getStoreDisplayName(bill.store);
+        billData.storeKey = bill.store;
+
+        return billData;
+      }),
+      store: 'todas',
+      storeDisplayName: 'Todas las tiendas',
+      total: totalRecords
     };
   }
 

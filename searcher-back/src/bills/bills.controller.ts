@@ -35,8 +35,8 @@ export class BillsController {
         total: result?.total
       });
       
-      // Si no hay datos, intentar cargar
-      if (result.data.length === 0 && !result.updating) {
+      // Si no hay datos y no es "todas", intentar cargar
+      if (result.data.length === 0 && !result.updating && store?.toLowerCase() !== 'todas') {
         this.logger.log(`🔄 No data found for ${store}, triggering initial load...`);
         // Forzar carga inicial en el background
         this.billsDbService.updateBillsManually(store).catch(error => {
@@ -64,6 +64,10 @@ export class BillsController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede actualizar manualmente "todas" las tiendas. Por favor, actualiza cada tienda individualmente.');
+    }
+
     await this.billsDbService.updateBillsManually(store);
     return this.billsDbService.getCachedBills(store);
   }
@@ -76,6 +80,10 @@ export class BillsController {
 
     if (!this.storeCredentialsService.isValidStore(store)) {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede recargar "todas" las tiendas. Por favor, recarga cada tienda individualmente.');
     }
 
     await this.billsDbService.clearCacheAndReload(store);
@@ -92,6 +100,10 @@ export class BillsController {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
     }
 
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede ejecutar "ensure-full-persistence" para "todas" las tiendas. Por favor, ejecuta para cada tienda individualmente.');
+    }
+
     await this.billsDbService.ensureFullDataPersistence(store);
     return { message: `Persistencia completa asegurada para bills de ${store}` };
   }
@@ -104,6 +116,10 @@ export class BillsController {
 
     if (!this.storeCredentialsService.isValidStore(store)) {
       throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    if (store?.toLowerCase() === 'todas') {
+      throw new BadRequestException('No se puede resetear el estado de sincronización para "todas" las tiendas. Por favor, ejecuta para cada tienda individualmente.');
     }
 
     await this.billsDbService.resetSyncStatus(store);
