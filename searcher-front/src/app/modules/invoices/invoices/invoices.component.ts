@@ -678,6 +678,11 @@ export class InvoicesComponent implements OnInit, OnDestroy {
             result.itemName = itemName;
           }
 
+          // Agregar tienda cuando selectedStore === 'todas'
+          if (this.selectedStore === 'todas' && invoice.tienda) {
+            result.storeName = invoice.tienda;
+          }
+
           foundImeis.push(result);
 
           if (!matchingInvoices.find(inv => inv.id === invoice.id)) {

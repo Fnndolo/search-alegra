@@ -201,7 +201,7 @@
   (click)="closeMassiveSearchModal()"
 >
   <div
-    class="bg-white rounded-lg shadow-xl w-11/12 max-w-4xl max-h-90vh overflow-y-auto"
+    class="bg-white rounded-lg shadow-xl w-11/12 max-w-6xl max-h-90vh overflow-y-auto"
     (click)="$event.stopPropagation()"
   >
     <!-- Header -->
@@ -268,22 +268,26 @@
             <h5 class="text-green-800 font-semibold mb-2">
               ✅ Encontrados ({{ massiveSearchResults.found.length }})
             </h5>
-            <div class="max-h-32 overflow-y-auto">
+            <div class="max-h-64 overflow-y-auto">
               <div *ngFor="let result of massiveSearchResults.found"
-                   class="text-sm mb-1"
+                   class="text-sm mb-2 p-2 rounded"
                    [class.text-green-700]="!result.isDuplicate"
                    [class.text-red-700]="result.isDuplicate"
                    [class.bg-red-50]="result.isDuplicate"
                    [class.border-l-4]="result.isDuplicate"
-                   [class.border-red-500]="result.isDuplicate"
-                   [class.pl-2]="result.isDuplicate">
-                <span class="font-mono">{{ result.imei }}</span>
-                <span class="ml-2 px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-                  ID: {{ result.invoiceId }}
-                </span>
-                <span *ngIf="result.itemName" class="ml-2 px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">
-                  {{ result.itemName }}
-                </span>
+                   [class.border-red-500]="result.isDuplicate">
+                <div class="font-mono font-bold">{{ result.imei }}</div>
+                <div class="mt-1 flex flex-wrap gap-2">
+                  <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
+                    ID: {{ result.invoiceId }}
+                  </span>
+                  <span *ngIf="result.itemName" class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">
+                    {{ result.itemName }}
+                  </span>
+                  <span *ngIf="selectedStore === 'todas' && result.storeName" class="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-semibold uppercase">
+                    {{ result.storeName }}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -293,8 +297,8 @@
             <h5 class="text-red-800 font-semibold mb-2">
               ❌ No encontrados ({{ massiveSearchResults.notFound.length }})
             </h5>
-            <div class="max-h-32 overflow-y-auto">
-              <div *ngFor="let imei of massiveSearchResults.notFound" class="text-red-700 text-sm font-mono">
+            <div class="max-h-64 overflow-y-auto">
+              <div *ngFor="let imei of massiveSearchResults.notFound" class="text-red-700 text-sm font-mono mb-1 p-1">
                 {{ imei }}
               </div>
             </div>
