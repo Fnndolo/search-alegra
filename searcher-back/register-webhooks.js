@@ -5,10 +5,10 @@ const https = require('https');
 const WEBHOOK_BASE_URL = 'search-alegra-production-5eed.up.railway.app/webhooks';
 
 const stores = {
-  pasto: 'c21hcnR2ZW50YXMwMTZAZ21haWwuY29tOjM0ODRhODQwNzE1Yjg0MDJlYzU3',
-  medellin: 'c21hcnRnYWRnZXRzbWVkZWxsaW5AZ21haWwuY29tOjdiMWZhMjJmYjNjMGJhNGExMGNh',
-  armenia: 'c21hcnRnYWRnZXRzYXJtZW5pYTJAZ21haWwuY29tOmZiNTkwZTgxMGZhMGQzYzc2YWRj',
-  pereira: 'c21hcnR2ZW50YXNwZXJlaXJhQGdtYWlsLmNvbToyMmI0ZWFlNDlkOWE3YjRmNjM0NA=='
+  pasto: 'a3Vwb2NlbGwuc2dwYXN0b0BnbWFpbC5jb206MzQ4NGE4NDA3MTViODQwMmVjNTc=',
+  medellin: 'a3Vwb2NlbGwubWVkZWxsaW5AZ21haWwuY29tOjdiMWZhMjJmYjNjMGJhNGExMGNh',
+  armenia: 'a3Vwb2NlbGwuYXJtZW5pYUBnbWFpbC5jb206ZmI1OTBlODEwZmEwZDNjNzZhZGM=',
+  pereira: 'a3Vwb2NlbGwucGVyZWlyYUBnbWFpbC5jb206MjJiNGVhZTQ5ZDlhN2I0ZjYzNDQ='
 };
 
 const events = ['new-invoice', 'edit-invoice', 'new-bill', 'edit-bill'];
