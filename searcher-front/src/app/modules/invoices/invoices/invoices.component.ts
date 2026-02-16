@@ -863,6 +863,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         { wch: 40 },  // Item
         { wch: 10 },  // Cantidad
         { wch: 50 },  // Descripción Item
+        { wch: 30 },  // Anotación
         { wch: 25 },  // Método de Pago
         { wch: 20 },  // Vendedor
         { wch: 12 },  // Estado
@@ -926,6 +927,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
             'Item': '',
             'Cantidad': '',
             'Descripción Item': '',
+            'Anotación': inv.anotation || '',
             'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
             'Vendedor': inv.seller?.name || 'N/A',
             'Estado': this.getStatusText(inv.status),
@@ -943,6 +945,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
               'Item': item.name,
               'Cantidad': item.quantity,
               'Descripción Item': item.description,
+              'Anotación': inv.anotation || '',
               'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
               'Vendedor': inv.seller?.name || 'N/A',
               'Estado': this.getStatusText(inv.status),
