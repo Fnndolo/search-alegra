@@ -854,9 +854,22 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       ];
       worksheet['!cols'] = colWidths;
     } else {
-      // Para facturas de venta, ajustar automáticamente todas las columnas
-      const colCount = Object.keys(exportData[0] || {}).length;
-      worksheet['!cols'] = Array(colCount).fill({ wch: 15 });
+      // Para facturas de venta con formato de filas
+      const colWidths = [
+        { wch: 12 },  // Fecha
+        { wch: 15 },  // Número Factura
+        { wch: 30 },  // Cliente
+        { wch: 18 },  // Identificación Cliente
+        { wch: 40 },  // Item
+        { wch: 10 },  // Cantidad
+        { wch: 50 },  // Descripción Item
+        { wch: 25 },  // Método de Pago
+        { wch: 20 },  // Vendedor
+        { wch: 12 },  // Estado
+        { wch: 15 },  // Total
+        { wch: 25 }   // Consecutivo interno (ALEGRA)
+      ];
+      worksheet['!cols'] = colWidths;
     }
 
     // Crear libro de trabajo
@@ -896,52 +909,51 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     };
 
     if (this.selectedInvoiceType === 'sales') {
-      // Encontrar el número máximo de items únicos en todas las facturas
-      let maxItems = 0;
-      invoices.forEach((inv: any) => {
-        const groupedItems = groupItems(inv.items || []);
-        if (groupedItems.length > maxItems) {
-          maxItems = groupedItems.length;
+      // Datos completos para facturas de venta - FORMATO CON UNA FILA POR ITEM
+      const exportRows: any[] = [];
+
+      invoices.forEach(inv => {
+        const items = inv.items || [];
+        const groupedItems = groupItems(items);
+
+        // Si no hay items, crear una fila con los datos de la factura sin items
+        if (groupedItems.length === 0) {
+          exportRows.push({
+            'Fecha': inv.date,
+            'Número Factura': inv.numberTemplate?.number || '',
+            'Cliente': inv.client?.name || '',
+            'Identificación Cliente': inv.client?.identification || '',
+            'Item': '',
+            'Cantidad': '',
+            'Descripción Item': '',
+            'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
+            'Vendedor': inv.seller?.name || 'N/A',
+            'Estado': this.getStatusText(inv.status),
+            'Total': inv.total || 0,
+            'Consecutivo interno (ALEGRA)': inv.id || ''
+          });
+        } else {
+          // Crear una fila por cada item
+          groupedItems.forEach(item => {
+            exportRows.push({
+              'Fecha': inv.date,
+              'Número Factura': inv.numberTemplate?.number || '',
+              'Cliente': inv.client?.name || '',
+              'Identificación Cliente': inv.client?.identification || '',
+              'Item': item.name,
+              'Cantidad': item.quantity,
+              'Descripción Item': item.description,
+              'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
+              'Vendedor': inv.seller?.name || 'N/A',
+              'Estado': this.getStatusText(inv.status),
+              'Total': inv.total || 0,
+              'Consecutivo interno (ALEGRA)': inv.id || ''
+            });
+          });
         }
       });
 
-      // Datos completos para facturas de venta (mantener formato original con columnas)
-      return invoices.map(inv => {
-        const row: any = {
-          'Fecha': inv.date,
-          'Número': inv.numberTemplate?.number || '',
-          'Cliente': inv.client?.name || '',
-          'Identificación Cliente': inv.client?.identification || '',
-          'Teléfono Cliente': inv.client?.phonePrimary || inv.client?.phonePrimary || '',
-          'Email Cliente': inv.client?.email || '',
-          'Dirección Cliente': inv.client?.address?.address || '',
-          'Ciudad Cliente': inv.client?.address?.city || ''
-        };
-
-        // Agrupar items y agregar columnas dinámicas
-        const groupedItems = groupItems(inv.items || []);
-        for (let i = 0; i < maxItems; i++) {
-          const item = groupedItems[i];
-          row[`Item ${i + 1}`] = item?.name || '';
-          row[`Cantidad Item ${i + 1}`] = item?.quantity || '';
-          row[`Precio Item ${i + 1}`] = item?.price || '';
-        }
-
-        // Agregar el resto de campos
-        return {
-          ...row,
-          'Anotación': inv.anotation || '',
-          'Descripción Items': inv.items?.map((i: any) => i.description).join(' | ') || '',
-          'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
-          'Vendedor': inv.seller?.name || 'N/A',
-          'Estado': this.getStatusText(inv.status),
-          'Subtotal': inv.subtotal || 0,
-          'Total': inv.total || 0,
-          'Moneda': inv.currency?.code || 'COP',
-          'Términos de Pago': inv.term || '',
-          'Fecha Vencimiento': inv.dueDate || ''
-        };
-      });
+      return exportRows;
     } else {
       // Datos completos para facturas de compra - NUEVO FORMATO CON UNA FILA POR ITEM
       const exportRows: any[] = [];
