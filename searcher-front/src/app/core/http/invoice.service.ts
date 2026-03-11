@@ -21,6 +21,11 @@ export class InvoiceService {
     return this.http.get<any>(`${this.apiUrl}/invoices/update${params}`);
   }
 
+  syncMissingPayments(store?: string): Observable<any> {
+    const params = store ? `?store=${store}` : '';
+    return this.http.get<any>(`${this.apiUrl}/invoices/sync-missing-payments${params}`);
+  }
+
   // Métodos para facturas de compra (bills)
   getAllPurchaseInvoices(store?: string): Observable<any> {
     const params = store ? `?store=${store}` : '';

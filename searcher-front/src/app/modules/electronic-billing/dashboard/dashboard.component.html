@@ -1,0 +1,100 @@
+<div class="flex flex-col bg-surface-50 min-h-full w-full">
+
+    <!-- Sticky Page Header -->
+    <header
+        class="h-16 bg-white border-b border-surface-200 flex items-center justify-between px-6 shrink-0 shadow-sm sticky top-0 z-30">
+        <div>
+            <h1 class="text-lg font-bold text-surface-900 leading-none">Facturación Electrónica</h1>
+            <p class="text-surface-400 text-xs mt-0.5">Gestión y envío a Kupocell</p>
+        </div>
+
+        <app-profile-menu class="hidden md:block"></app-profile-menu>
+    </header>
+
+    <!-- Content area -->
+    <div class="flex-1 flex flex-col p-3 md:p-5">
+
+        <!-- Custom Modern Tabs -->
+        <div
+            class="flex gap-1 md:gap-2 mb-4 md:mb-6 border-b border-surface-200 shrink-0 select-none overflow-x-auto pb-px">
+            <button (click)="activeTab = 'existing'"
+                class="px-5 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 relative whitespace-nowrap"
+                [class.text-primary-600]="activeTab === 'existing'" [class.text-surface-500]="activeTab !== 'existing'"
+                [class.hover:bg-surface-100]="activeTab !== 'existing'">
+                <div class="flex items-center gap-2">
+                    <i class="pi pi-file-arrow-up text-lg"></i>
+                    <span>Desde Facturas Existentes</span>
+                </div>
+                <!-- Tab Highlight line -->
+                <div *ngIf="activeTab === 'existing'"
+                    class="absolute bottom-0 left-0 w-full h-[3px] bg-primary-500 rounded-t-full"></div>
+            </button>
+
+            <button (click)="activeTab = 'excel'"
+                class="px-5 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 relative whitespace-nowrap"
+                [class.text-primary-600]="activeTab === 'excel'" [class.text-surface-500]="activeTab !== 'excel'"
+                [class.hover:bg-surface-100]="activeTab !== 'excel'">
+                <div class="flex items-center gap-2">
+                    <i class="pi pi-file-excel text-lg"></i>
+                    <span>Carga Masiva (Excel)</span>
+                </div>
+                <div *ngIf="activeTab === 'excel'"
+                    class="absolute bottom-0 left-0 w-full h-[3px] bg-primary-500 rounded-t-full"></div>
+            </button>
+
+            <button (click)="activeTab = 'logs'"
+                class="px-5 py-3 text-sm font-medium rounded-t-lg transition-all duration-200 relative whitespace-nowrap"
+                [class.text-primary-600]="activeTab === 'logs'" [class.text-surface-500]="activeTab !== 'logs'"
+                [class.hover:bg-surface-100]="activeTab !== 'logs'">
+                <div class="flex items-center gap-2">
+                    <i class="pi pi-history text-lg"></i>
+                    <span>Logs y Resultados</span>
+                </div>
+                <div *ngIf="activeTab === 'logs'"
+                    class="absolute bottom-0 left-0 w-full h-[3px] bg-primary-500 rounded-t-full"></div>
+            </button>
+        </div>
+
+        <!-- Main Content Area with elegant inner scroll -->
+        <div
+            class="flex-1 flex flex-col bg-white border border-surface-200 rounded-xl shadow-sm relative overflow-hidden">
+
+            <!-- Tab 1: Facturas Existentes (Forma A) -->
+            <div *ngIf="activeTab === 'existing'" class="flex flex-col p-0 md:p-6 animate-fade-in relative">
+                <app-invoice-list class="flex flex-col w-full"></app-invoice-list>
+            </div>
+
+            <!-- Tab 2: Carga Excel (Forma B) -->
+            <div *ngIf="activeTab === 'excel'"
+                class="h-full w-full animate-fade-in flex flex-col items-center justify-center relative bg-surface-50">
+                <app-excel-upload class="w-full h-full block overflow-y-auto"></app-excel-upload>
+            </div>
+
+            <!-- Tab 3: Logs -->
+            <div *ngIf="activeTab === 'logs'"
+                class="h-full w-full animate-fade-in flex flex-col relative bg-surface-50">
+                <app-sync-logs class="w-full h-full block overflow-y-auto"></app-sync-logs>
+            </div>
+
+        </div>
+    </div>
+
+</div><!-- end content area -->
+
+<style>
+    .animate-fade-in {
+        animation: fadeIn 0.3s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(5px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

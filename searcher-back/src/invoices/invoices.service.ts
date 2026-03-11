@@ -109,15 +109,46 @@ export class InvoicesService {
       progress: invoices.length,
       fullyLoaded: syncStatus.isFullyLoaded,
       data: invoices.map(inv => {
-        const invoiceData = { ...inv.data };
-
-        // Si tiene bankAccountName y payments, agregar bankAccount dentro de payments
-        if (inv.bankAccountName && invoiceData.payments && invoiceData.payments.length > 0) {
-          invoiceData.payments = invoiceData.payments.map(payment => ({
-            ...payment,
-            bankAccount: inv.bankAccountName
-          }));
-        }
+        const d = inv.data;
+        // Solo devolver campos necesarios para el buscador para optimizar transferencia
+        const invoiceData: any = {
+          id: d.id,
+          date: d.date,
+          datetime: d.datetime,
+          status: d.status,
+          total: d.total,
+          anotation: d.anotation,
+          tienda: d.tienda || inv.store,
+          storeKey: inv.store,
+          numberTemplate: {
+            number: d.numberTemplate?.number || d.number
+          },
+          client: {
+            name: d.client?.name || 'Consumidor Final',
+            identification: d.client?.identification || '',
+            email: d.client?.email || '',
+            mobile: d.client?.mobile || '',
+            phonePrimary: d.client?.phonePrimary || '',
+            phone1: d.client?.phone1 || '',
+            address: d.client?.address || ''
+          },
+          seller: {
+            name: d.seller?.name || 'N/A'
+          },
+          paymentBankAccounts: inv.paymentBankAccounts || d.paymentBankAccounts || [],
+          // Mantener compatibilidad con la tabla
+          payments: (inv.paymentBankAccounts || d.paymentBankAccounts || []).map(p => ({
+            bankAccount: p.bankName || p.bankAccount
+          })),
+          // Solo enviar items mínimos para búsqueda masiva e IMEI
+          items: (d.items || []).map(item => ({
+            name: item.name,
+            description: item.description,
+            observations: item.observations,
+            quantity: item.quantity,
+            price: item.price
+          }))
+        };
 
         return invoiceData;
       }),
@@ -140,7 +171,7 @@ export class InvoicesService {
     total: number;
   }> {
     const physicalStores = this.storeCredentialsService.getAllPhysicalStores();
-    
+
     // Obtener todas las facturas de todas las tiendas
     const allInvoices = await this.invoiceRepository
       .createQueryBuilder('invoice')
@@ -179,6 +210,9 @@ export class InvoicesService {
         // Agregar la tienda al objeto
         invoiceData.tienda = this.storeCredentialsService.getStoreDisplayName(inv.store);
         invoiceData.storeKey = inv.store;
+
+        // Exponer paymentBankAccounts detallados
+        invoiceData.paymentBankAccounts = inv.paymentBankAccounts;
 
         // Si tiene bankAccountName y payments, agregar bankAccount dentro de payments
         if (inv.bankAccountName && invoiceData.payments && invoiceData.payments.length > 0) {
@@ -271,7 +305,7 @@ export class InvoicesService {
 
             // Guardar en la base de datos
             if (newInvoices.length > 0) {
-              await this.saveInvoicesToDB(store, newInvoices);
+              await this.saveInvoicesToDB(store, newInvoices, false);
 
               const currentCount = await this.invoiceRepository.count({ where: { store } });
               this.logger.log(`Progreso de carga ${this.storeCredentialsService.getStoreDisplayName(store)}: ${currentCount}/${total} facturas`);
@@ -309,58 +343,76 @@ export class InvoicesService {
    * Guarda las facturas en la base de datos
    */
   /**
-   * Obtiene el medio de pago (nombre de la cuenta bancaria) desde la API de pagos
+   * Obtiene todos los medios de pago (nombres de cuentas bancarias) desde la API de pagos para una factura
    */
-  private async getPaymentMethod(store: string, invoiceData: any): Promise<string | null> {
+  private async fetchAllPaymentBankAccounts(store: string, invoiceData: any): Promise<{ paymentId: string, bankName: string, amount: number }[]> {
     try {
-      const credentials = this.storeCredentialsService.getCredentials(store);
-
-      // Verificar si la factura tiene pagos
       if (!invoiceData.payments || invoiceData.payments.length === 0) {
-        return null;
+        return [];
       }
 
-      // Obtener el ID del primer pago
-      const paymentId = invoiceData.payments[0].id;
+      const credentials = this.storeCredentialsService.getCredentials(store);
+      const results: { paymentId: string, bankName: string, amount: number }[] = [];
 
-      if (!paymentId) {
-        return null;
+      for (const payment of invoiceData.payments) {
+        if (!payment.id) continue;
+
+        try {
+          const response = await this.makeRequestWithRetry(() =>
+            axios.get(`https://api.alegra.com/api/v1/payments/${payment.id}`, {
+              headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
+            })
+          );
+
+          if (response.data && response.data.bankAccount && response.data.bankAccount.name) {
+            results.push({
+              paymentId: String(payment.id),
+              bankName: response.data.bankAccount.name,
+              amount: payment.amount || 0
+            });
+          }
+        } catch (err) {
+          this.logger.warn(`Error obteniendo detalle del pago ${payment.id} de factura ${invoiceData.id}: ${err.message}`);
+        }
       }
 
-      // Llamar a la API de pagos
-      const response = await this.makeRequestWithRetry(() =>
-        axios.get(`https://api.alegra.com/api/v1/payments/${paymentId}`, {
-          headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
-        })
-      );
-
-      const paymentData = response.data;
-
-      // Retornar el nombre de la cuenta bancaria
-      return paymentData?.bankAccount?.name || null;
+      return results;
 
     } catch (error) {
-      this.logger.warn(`Error obteniendo medio de pago para factura ${invoiceData.id}:`, error.message);
-      return null;
+      this.logger.warn(`Error procesando pagos para factura ${invoiceData.id}:`, error.message);
+      return [];
     }
   }
 
-  private async saveInvoicesToDB(store: string, invoices: any[]): Promise<void> {
+  private async saveInvoicesToDB(store: string, invoices: any[], markAsPendiente = true): Promise<void> {
     for (const invoiceData of invoices) {
-      // Obtener el medio de pago
-      const paymentMethod = await this.getPaymentMethod(store, invoiceData);
+      // Obtener todos los medios de pago detallados
+      const bankAccounts = await this.fetchAllPaymentBankAccounts(store, invoiceData);
+      const firstBankName = bankAccounts.length > 0 ? bankAccounts[0].bankName : null;
 
       // Buscar si ya existe
       const existingInvoice = await this.invoiceRepository.findOne({
         where: { id: invoiceData.id, store }
       });
 
+      // Determinar si la factura es válida para el listado de facturación electrónica
+      const isVoidOrDraft = invoiceData.status === 'void' || invoiceData.status === 'draft';
+
       if (existingInvoice) {
-        // Actualizar
+        // Actualizar datos
         existingInvoice.data = invoiceData;
         existingInvoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         existingInvoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-        existingInvoice.bankAccountName = paymentMethod;
+        existingInvoice.bankAccountName = firstBankName;
+        existingInvoice.paymentBankAccounts = bankAccounts;
+
+        // Si fue anulada o es borrador, quitarle el billingStatus para que desaparezca del listado
+        if (isVoidOrDraft) {
+          existingInvoice.billingStatus = null;
+        } else if (markAsPendiente && !existingInvoice.billingStatus) {
+          // Si viene de webhook y no tenía estado, ponerlo como pendiente (solo si es válida)
+          existingInvoice.billingStatus = 'pendiente';
+        }
         await this.invoiceRepository.save(existingInvoice);
       } else {
         // Crear nuevo
@@ -370,7 +422,10 @@ export class InvoicesService {
         invoice.data = invoiceData;
         invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-        invoice.bankAccountName = paymentMethod;
+        invoice.bankAccountName = firstBankName;
+        invoice.paymentBankAccounts = bankAccounts;
+        // Solo poner pendiente si NO es anulada ni borrador
+        invoice.billingStatus = (markAsPendiente && !isVoidOrDraft) ? 'pendiente' : null;
         await this.invoiceRepository.save(invoice);
       }
     }
@@ -481,7 +536,7 @@ export class InvoicesService {
       );
 
       if (newInvoices.length > 0) {
-        await this.saveInvoicesToDB(store, newInvoices);
+        await this.saveInvoicesToDB(store, newInvoices, true);
         this.logger.log(`✅ Se agregaron ${newInvoices.length} facturas nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       } else {
         this.logger.log(`No se encontraron facturas nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
@@ -489,6 +544,45 @@ export class InvoicesService {
 
     } catch (error) {
       this.logger.error(`Error obteniendo facturas nuevas para ${store}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Sincroniza las 30 facturas MÁS RECIENTES que fueron marcadas como "Cobradas" (status=closed).
+   * Se ejecuta en ~2 segundos con un solo llamado a Alegra.
+   * Esto garantiza recuperar cualquier pago asociado recientemente, solventando desconexiones del webhook.
+   */
+  async syncMissingPayments(store: string): Promise<void> {
+    const credentials = this.storeCredentialsService.getCredentials(store);
+    this.logger.log(`🔄 Sincronizando pagos rápidos de las últimas 30 facturas cobradas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+
+    try {
+      // 1. Descargar las 30 facturas cobradas más recientes en UNA SOLA petición.
+      const response = await this.makeRequestWithRetry(() =>
+        axios.get(credentials.invoicesApiUrl, {
+          params: { start: 0, limit: 30, metadata: false, order_direction: 'DESC', status: 'closed' },
+          headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
+        })
+      );
+
+      const closedInvoices = response.data.data || [];
+
+      if (closedInvoices.length === 0) {
+        this.logger.log(`✅ No hay facturas cobradas recientes para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+        return;
+      }
+
+      // Filtrar facturas que realmente tengan pagos
+      const invoicesWithPayments = closedInvoices.filter((inv: any) => inv.payments && inv.payments.length > 0);
+
+      if (invoicesWithPayments.length > 0) {
+        // Guardamos todas; saveInvoicesToDB se asegurará de ir a buscar el banco / actualizar si les falta.
+        await this.saveInvoicesToDB(store, invoicesWithPayments, true);
+        this.logger.log(`✅ Se resincronizaron pagos para ${invoicesWithPayments.length} facturas cerradas en ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+      }
+    } catch (error) {
+      this.logger.error(`Error sincronizando pagos recientes para ${store}`, error);
       throw error;
     }
   }
@@ -566,10 +660,12 @@ export class InvoicesService {
       // Guardar o actualizar la factura
       await this.saveInvoicesToDB(store, [invoiceData]);
 
-      this.logger.log(`✅ Factura ${invoiceId} actualizada correctamente`);
+      this.logger.log(`✅ Factura ${invoiceId} actualizada correctamente mediante webhook`);
 
-      // Retornar la factura actualizada
-      return invoiceData;
+      // Retornar la factura YA FORMATADA desde nuestra base de datos, para que Webhook la emita con los bancos
+      const formattedInvoice = await this.getInvoiceById(store, invoiceId);
+      
+      return formattedInvoice || invoiceData;
     } catch (error) {
       this.logger.error(`Error actualizando factura ${invoiceId} para ${store}`, error);
       throw new ServiceUnavailableException(`Error actualizando factura: ${error.message}`);
@@ -709,9 +805,10 @@ export class InvoicesService {
           try {
             // Solo actualizar si tiene pagos en los datos
             if (invoice.data?.payments && invoice.data.payments.length > 0) {
-              const paymentMethod = await this.getPaymentMethod(store, invoice.data);
-              if (paymentMethod) {
-                invoice.bankAccountName = paymentMethod;
+              const bankAccounts = await this.fetchAllPaymentBankAccounts(store, invoice.data);
+              if (bankAccounts.length > 0) {
+                invoice.bankAccountName = bankAccounts[0].bankName;
+                invoice.paymentBankAccounts = bankAccounts;
                 await this.invoiceRepository.save(invoice);
               }
             }

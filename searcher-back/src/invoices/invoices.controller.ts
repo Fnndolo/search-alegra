@@ -1,8 +1,14 @@
-import { Controller, Get, Query, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Query, BadRequestException, Logger, InternalServerErrorException, UseGuards } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../entities/user.entity';
 
 @Controller('invoices')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.USUARIO, UserRole.FACTURACION)
 export class InvoicesController {
   private readonly logger = new Logger(InvoicesController.name);
 
@@ -76,6 +82,26 @@ export class InvoicesController {
 
     await this.invoicesService.clearCacheAndReload(store);
     return this.invoicesService.getCachedInvoices(store);
+  }
+
+  @Get('sync-missing-payments')
+  async syncMissingPayments(@Query('store') store?: string) {
+    if (!store) {
+      throw new BadRequestException('El parámetro "store" es requerido');
+    }
+
+    if (!this.storeCredentialsService.isValidStore(store)) {
+      throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
+    }
+
+    if (store?.toLowerCase() === 'todas') {
+      const stores = this.storeCredentialsService.getAllPhysicalStores();
+      await Promise.all(stores.map(s => this.invoicesService.syncMissingPayments(s)));
+      return this.invoicesService.getAllStoresInvoices();
+    } else {
+      await this.invoicesService.syncMissingPayments(store);
+      return this.invoicesService.getCachedInvoices(store);
+    }
   }
 
   @Get('ensure-full-persistence')

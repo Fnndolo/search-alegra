@@ -114,7 +114,6 @@ export class BillsDbService {
       this.logger.log(`No se inicia carga: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}, isFullyLoaded=${syncStatus.isFullyLoaded}`);
     }
 
-    // Obtener las bills de la base de datos ordenadas por ID descendente, luego por fecha
     const bills = await this.billRepository.find({
       where: { store },
       order: { id: 'DESC', date: 'DESC' },
@@ -124,7 +123,33 @@ export class BillsDbService {
       updating: syncStatus.isSyncing,
       progress: bills.length,
       fullyLoaded: syncStatus.isFullyLoaded,
-      data: bills.map(bill => bill.data), // Retornar solo los datos de las bills
+      data: bills.map(bill => {
+        const d = bill.data;
+        return {
+          id: d.id,
+          date: d.date,
+          numberTemplate: {
+            number: d.numberTemplate?.number || d.number
+          },
+          provider: {
+            name: d.provider?.name || 'Desconocido'
+          },
+          total: d.total,
+          status: d.status,
+          anotation: d.anotation,
+          storeKey: bill.store,
+          tienda: this.storeCredentialsService.getStoreDisplayName(bill.store),
+          purchases: {
+            items: (d.purchases?.items || []).map(item => ({
+              name: item.name,
+              description: item.description,
+              observations: item.observations,
+              quantity: item.quantity,
+              price: item.price
+            }))
+          }
+        };
+      }),
       store: store,
       storeDisplayName: this.storeCredentialsService.getStoreDisplayName(store),
       total: syncStatus.totalRecords
@@ -144,7 +169,7 @@ export class BillsDbService {
     total: number;
   }> {
     const physicalStores = this.storeCredentialsService.getAllPhysicalStores();
-    
+
     // Obtener todas las bills de todas las tiendas
     const allBills = await this.billRepository
       .createQueryBuilder('bill')
@@ -159,8 +184,7 @@ export class BillsDbService {
     );
 
     const anyUpdating = syncStatuses.some(status => status.isSyncing);
-    const allFullyLoaded = syncStatuses.every(status => status.isFullyLoaded);
-    const totalRecords = syncStatuses.reduce((sum, status) => sum + status.totalRecords, 0);
+    const totalRecords = syncStatuses.reduce((acc, status) => acc + status.totalRecords, 0);
 
     // Inicializar carga para tiendas sin datos
     syncStatuses.forEach((syncStatus, index) => {
@@ -176,15 +200,33 @@ export class BillsDbService {
     return {
       updating: anyUpdating,
       progress: allBills.length,
-      fullyLoaded: allFullyLoaded,
+      fullyLoaded: syncStatuses.every(status => status.isFullyLoaded),
       data: allBills.map(bill => {
-        const billData = { ...bill.data };
-        
-        // Agregar la tienda al objeto
-        billData.tienda = this.storeCredentialsService.getStoreDisplayName(bill.store);
-        billData.storeKey = bill.store;
-
-        return billData;
+        const d = bill.data;
+        return {
+          id: d.id,
+          date: d.date,
+          numberTemplate: {
+            number: d.numberTemplate?.number || d.number
+          },
+          provider: {
+            name: d.provider?.name || 'Desconocido'
+          },
+          total: d.total,
+          status: d.status,
+          anotation: d.anotation,
+          storeKey: bill.store,
+          tienda: this.storeCredentialsService.getStoreDisplayName(bill.store),
+          purchases: {
+            items: (d.purchases?.items || []).map(item => ({
+              name: item.name,
+              description: item.description,
+              observations: item.observations,
+              quantity: item.quantity,
+              price: item.price
+            }))
+          }
+        };
       }),
       store: 'todas',
       storeDisplayName: 'Todas las tiendas',

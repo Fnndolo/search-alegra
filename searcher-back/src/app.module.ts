@@ -12,6 +12,17 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Invoice } from './entities/invoice.entity';
 import { Bill } from './entities/bill.entity';
 import { SyncStatus } from './entities/sync-status.entity';
+import { User } from './entities/user.entity';
+import { ElectronicBillingModule } from './modules/electronic-billing.module';
+
+// New Entities for Kupocell Billing
+import { InvoiceSyncLog } from './modules/entities/invoice-sync-log.entity';
+import { ProductMapping } from './entities/product-mapping.entity';
+import { BankMapping } from './entities/bank-mapping.entity';
+import { KupoCatalogCache } from './modules/entities/kupo-catalog-cache.entity';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
+
 
 @Module({
   imports: [
@@ -24,18 +35,34 @@ import { SyncStatus } from './entities/sync-status.entity';
       username: process.env.DATABASE_USERNAME || 'postgres',
       password: process.env.DATABASE_PASSWORD || 'postgres',
       database: process.env.DATABASE_NAME || 'alegra_search',
-      entities: [Invoice, Bill, SyncStatus],
-      synchronize: true, // Solo para desarrollo, en producción usar migraciones
+      entities: [
+        Invoice,
+        Bill,
+        SyncStatus,
+        InvoiceSyncLog,
+        ProductMapping,
+        BankMapping,
+        KupoCatalogCache,
+        User
+      ],
+      synchronize: true, // Solo para desarrollo
       logging: false,
       ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
-    TypeOrmModule.forFeature([Invoice, Bill, SyncStatus]),
-    InvoicesModule, 
+    TypeOrmModule.forFeature([
+      Invoice,
+      Bill,
+      SyncStatus
+    ]),
+    InvoicesModule,
     BillsModule,
     DataStorageModule,
-    WebhooksModule
+    WebhooksModule,
+    ElectronicBillingModule,
+    AuthModule,
+    UsersModule
   ],
   controllers: [AppController, DatabaseCleanupController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

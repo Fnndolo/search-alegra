@@ -9,14 +9,13 @@ async function bootstrap() {
   // Configuración de CORS más permisiva
   app.enableCors({
     origin: [
-      process.env.FRONTEND_ORIGIN || 'http://localhost:4200', 
+      process.env.FRONTEND_ORIGIN,
       'http://localhost:4200',
+      'https://search-alegra-production-5eed.up.railway.app',
       'https://amusing-simplicity-production.up.railway.app',
       'http://localhost:3000',
-      'http://127.0.0.1:4200',
-      // Permitir cualquier origen en desarrollo
-      ...(process.env.NODE_ENV !== 'production' ? ['*'] : [])
-    ],
+      'http://127.0.0.1:4200'
+    ].filter(Boolean) as string[],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Origin', 'X-Requested-With'],
     credentials: true,

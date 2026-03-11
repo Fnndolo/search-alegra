@@ -1,10 +1,10 @@
 import { Component } from '@angular/core';
-import { InvoicesComponent } from './modules/invoices/invoices/invoices.component';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
-  template: `<app-invoices />`,
+  template: `<router-outlet />`,
   standalone: true,
-  imports: [InvoicesComponent]
+  imports: [RouterOutlet]
 })
 export class AppComponent {}

@@ -1,0 +1,120 @@
+<div class="flex-1 min-h-0 flex flex-col p-6 animate-fade-in bg-surface-50">
+    <!-- Header Section -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-surface-900 leading-none">Estandarizar Bancos</h1>
+            <p class="text-surface-600 mt-2 text-sm max-w-2xl">
+                Mapea los nombres de las cuentas bancarias que vienen de las sedes con las cuentas maestras de
+                Facturación Kupocell.
+            </p>
+        </div>
+
+        <div class="flex gap-3">
+            <button (click)="syncCatalog()" [disabled]="loadingBanks()"
+                class="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-surface-50 text-surface-700 rounded-xl font-bold shadow-sm border border-surface-200 transition-all active:scale-95 disabled:opacity-50 select-none outline-none">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 text-primary-500" [class.animate-spin]="loadingBanks()">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                </svg>
+                <span class="text-xs uppercase tracking-wider">Sincronizar Bancos</span>
+            </button>
+            <button (click)="saveMappings()" [disabled]="saving()"
+                class="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-100 transition-all active:scale-95 border-none disabled:opacity-50 select-none outline-none">
+                <svg *ngIf="!saving()" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                <svg *ngIf="saving()" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 0 1 4 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-xs uppercase tracking-wider">Guardar Cambios</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Data Table -->
+    <div
+        class="flex-1 overflow-hidden border border-surface-200 rounded-xl bg-white shadow-sm custom-table-wrapper flex flex-col">
+
+        <div class="p-4 border-b border-surface-200 bg-surface-0 flex justify-between items-center bg-white">
+            <div class="flex items-center gap-2">
+                <i class="pi pi-building text-primary-500"></i>
+                <span class="font-bold text-surface-800 text-sm italic">
+                    {{ mappings().length }} Entidades bancarias mapeadas
+                </span>
+            </div>
+            <button (click)="addRow()"
+                class="flex items-center gap-2 px-4 py-2 rounded-xl font-bold bg-primary-50 text-primary-700 hover:bg-primary-100 transition-all active:scale-95 select-none outline-none border border-primary-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                <span class="text-xs uppercase tracking-tight">Agregar Línea</span>
+            </button>
+        </div>
+
+        <p-table [value]="mappings()" [loading]="loadingMappings()" styleClass="p-datatable-sm" [scrollable]="true"
+            scrollHeight="flex">
+
+            <ng-template pTemplate="header">
+                <tr>
+                    <th style="min-width: 300px">Cuenta en Kupocell</th>
+                    <th style="min-width: 200px">Nombre Sede Pasto</th>
+                    <th style="min-width: 200px">Nombre Sede Armenia</th>
+                    <th style="min-width: 200px">Nombre Sede Pereira</th>
+                    <th style="min-width: 200px">Nombre Sede Medellin</th>
+                    <th style="width: 80px; text-align: center">Acciones</th>
+                </tr>
+            </ng-template>
+
+            <ng-template pTemplate="body" let-row let-i="rowIndex">
+                <tr>
+                    <td>
+                        <p-dropdown [options]="kupoBanks()" [(ngModel)]="row.kupoBankId" optionLabel="name"
+                            optionValue="id" [filter]="true" filterBy="name" [showClear]="true"
+                            placeholder="Seleccione cuenta Kupocell..." styleClass="w-full"
+                            (onChange)="onBankSelect($event, row)" appendTo="body">
+                        </p-dropdown>
+                    </td>
+                    <td>
+                        <input pInputText type="text" [(ngModel)]="row.namePasto" placeholder="Ej: CERO PAY..."
+                            class="w-full" />
+                    </td>
+                    <td>
+                        <input pInputText type="text" [(ngModel)]="row.nameArmenia" placeholder="Ej: CERO PAY..."
+                            class="w-full" />
+                    </td>
+                    <td>
+                        <input pInputText type="text" [(ngModel)]="row.namePereira" placeholder="Ej: CERO PAY..."
+                            class="w-full" />
+                    </td>
+                    <td>
+                        <input pInputText type="text" [(ngModel)]="row.nameMedellin" placeholder="Ej: CERO PAY..."
+                            class="w-full" />
+                    </td>
+                    <td style="text-align: center">
+                        <button (click)="deleteRow(i)"
+                            class="w-9 h-9 rounded-xl mx-auto flex items-center justify-center text-red-500 hover:bg-red-100 hover:text-red-700 transition-all active:scale-90 select-none outline-none border border-transparent hover:border-red-200 shadow-sm group"
+                            pTooltip="Eliminar fila">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="w-5 h-5 transition-transform group-hover:scale-110">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            </svg>
+                        </button>
+                    </td>
+                </tr>
+            </ng-template>
+
+            <ng-template pTemplate="emptymessage">
+                <tr>
+                    <td colspan="6" class="text-center p-8">
+                        <i class="pi pi-inbox text-surface-400 text-4xl mb-4 block"></i>
+                        <span class="text-surface-500 font-medium block">Aún no hay mapeos de bancos
+                            configurados.</span>
+                        <span class="text-surface-400 text-sm mt-1 block">Presiona "Agregar Línea" para vincular los
+                            nombres de las sedes con Kupocell.</span>
+                    </td>
+                </tr>
+            </ng-template>
+        </p-table>
+    </div>
+</div>
+
+<p-toast></p-toast>

@@ -1,0 +1,37 @@
+<div class="flex h-screen bg-surface-50 text-surface-900 overflow-hidden font-sans relative">
+
+    <!-- Mobile Header -->
+    <div
+        class="md:hidden h-14 bg-white border-b border-surface-200 flex items-center justify-between px-4 shrink-0 shadow-sm z-30 fixed top-0 w-full">
+        <div class="flex items-center">
+            <button (click)="sidebarComponent?.toggleMobileMenu()"
+                class="w-10 h-10 flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 hover:text-surface-700 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                </svg>
+            </button>
+            <div class="ml-3 flex items-center gap-2">
+                <div class="w-6 h-6 rounded bg-primary-500 flex items-center justify-center text-white font-bold text-xs">S
+                </div>
+                <span class="font-bold text-surface-900 text-base">Smart Alegra</span>
+            </div>
+        </div>
+
+        <button pButton icon="pi pi-sign-out" (click)="onLogout()" class="p-button-text p-button-rounded !text-surface-500"></button>
+    </div>
+
+    <!-- Sidebar Navigation -->
+    <app-sidebar class="shrink-0 z-50"></app-sidebar>
+
+    <!-- Main Content Area -->
+    <main
+        class="flex-1 overflow-y-auto flex flex-col bg-surface-50 relative transition-all duration-300 left-0 pt-14 md:pt-0"
+        [class.md:ml-64]="sidebarComponent?.isPinned()" [class.md:ml-16]="!sidebarComponent?.isPinned()">
+
+        <!-- Page Content Router -->
+        <div class="flex-1 flex flex-col relative w-full">
+            <router-outlet></router-outlet>
+        </div>
+
+    </main>
+</div>

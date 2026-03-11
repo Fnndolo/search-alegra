@@ -1,0 +1,386 @@
+<div class="flex flex-col bg-white relative p-3 md:p-0 w-full min-h-full">
+    <p-toast></p-toast>
+
+    <!-- Top Filter Bar -->
+    <div class="bg-surface-50 border border-surface-200 rounded-xl p-4 mb-4 shrink-0">
+
+        <!-- Row 1: Search + Status + Store + Products -->
+        <div class="flex flex-col md:flex-row flex-wrap gap-3 md:items-center w-full">
+            <!-- Global Search -->
+            <span class="relative w-full md:w-auto md:flex-grow-0">
+                <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 z-10"></i>
+                <input pInputText type="text" placeholder="Buscar cliente, producto, número..."
+                    class="w-full md:w-72 pl-10 pr-4 py-2 rounded-lg border-surface-300 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+                    [(ngModel)]="searchText" (input)="applyFilters()" />
+            </span>
+
+            <!-- Status Filter -->
+            <p-dropdown [options]="statuses" [(ngModel)]="selectedStatus" placeholder="Estado"
+                styleClass="w-full md:w-40" optionLabel="label" optionValue="value" (onChange)="applyFilters()">
+            </p-dropdown>
+
+            <!-- Store Filter -->
+            <p-dropdown [options]="storeOptions()" [(ngModel)]="selectedStore" placeholder="Tienda"
+                styleClass="w-full md:w-44" optionLabel="label" optionValue="value" [filter]="false"
+                (onChange)="applyFilters()">
+            </p-dropdown>
+
+            <!-- Product Filter (MultiSelect with search) -->
+            <p-multiselect [options]="productOptions()" [(ngModel)]="selectedProducts" placeholder="Producto"
+                [filter]="true" filterPlaceHolder="Buscar producto..." styleClass="w-full md:w-56" optionLabel="label"
+                optionValue="value" [maxSelectedLabels]="1" selectedItemsLabel="{0} productos"
+                (onChange)="applyFilters()">
+            </p-multiselect>
+
+            <div class="flex gap-2 w-full md:w-auto mt-2 md:mt-0 ml-auto justify-end">
+                <!-- Clear Filters -->
+                <button (click)="clearFilters()" [disabled]="!hasActiveFilters"
+                    class="w-10 h-10 rounded-full flex items-center justify-center transition-all select-none outline-none border-none disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+                    [ngClass]="hasActiveFilters ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-surface-100 text-surface-400'"
+                    pTooltip="Limpiar todos los filtros">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                    </svg>
+                </button>
+                
+                <!-- Refresh -->
+                <button (click)="loadInvoices()"
+                    class="w-10 h-10 rounded-full flex items-center justify-center bg-surface-100 text-surface-600 hover:bg-surface-200 transition-all select-none outline-none border-none shrink-0"
+                    pTooltip="Recargar facturas">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Row 2: Date Range + Price Range -->
+        <!-- Row 2: Date Range + Price Range -->
+        <div
+            class="flex flex-col lg:flex-row flex-wrap gap-4 lg:items-center mt-3 pt-3 border-t border-surface-200 w-full">
+
+            <!-- Date Range -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
+                <span class="text-sm font-semibold text-surface-600 whitespace-nowrap hidden sm:inline">Fecha:</span>
+                <div class="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+                    <p-datepicker [(ngModel)]="dateFrom" placeholder="Desde" dateFormat="dd/mm/yy" [showIcon]="true"
+                        styleClass="w-full sm:w-40" inputStyleClass="py-2 text-sm w-full" (onSelect)="applyFilters()"
+                        (onClear)="applyFilters()" [showClear]="true">
+                    </p-datepicker>
+                    <p-datepicker [(ngModel)]="dateTo" placeholder="Hasta" dateFormat="dd/mm/yy" [showIcon]="true"
+                        styleClass="w-full sm:w-40" inputStyleClass="py-2 text-sm w-full" (onSelect)="applyFilters()"
+                        (onClear)="applyFilters()" [showClear]="true">
+                    </p-datepicker>
+                </div>
+            </div>
+
+            <div class="h-8 w-px bg-surface-300 hidden lg:block mx-1"></div>
+
+            <!-- Price Range -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
+                <span class="text-sm font-semibold text-surface-600 whitespace-nowrap hidden sm:inline">Precio:</span>
+                <div class="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+                    <p-inputNumber [(ngModel)]="priceFrom" placeholder="Precio Desde" mode="currency" currency="COP"
+                        locale="es-CO" inputStyleClass="py-2 text-sm w-full text-center sm:text-left"
+                        (onBlur)="applyFilters()" styleClass="w-full sm:w-36">
+                    </p-inputNumber>
+                    <p-inputNumber [(ngModel)]="priceTo" placeholder="Precio Hasta" mode="currency" currency="COP"
+                        locale="es-CO" inputStyleClass="py-2 text-sm w-full text-center sm:text-left"
+                        (onBlur)="applyFilters()" styleClass="w-full sm:w-36">
+                    </p-inputNumber>
+                </div>
+            </div>
+
+            <!-- Results count -->
+            <div class="w-full lg:w-auto lg:ml-auto text-sm text-surface-500 text-center sm:text-right mt-1 lg:mt-0">
+                <span class="text-primary-600 font-bold">{{ filteredInvoices().length }}</span> de {{
+                allInvoices().length }} facturas
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Action Bar -->
+    <div *ngIf="selectedInvoices.length > 0"
+        class="bg-primary-50 border border-primary-200 rounded-xl p-3 md:p-4 mb-4 flex flex-col md:flex-row justify-between md:items-center gap-3 shrink-0 animate-fade-in">
+
+        <div class="flex items-center gap-3">
+            <div
+                class="bg-primary-500 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-sm">
+                {{ selectedInvoices.length }}
+            </div>
+            <span class="font-medium text-primary-900">Facturas seleccionadas</span>
+        </div>
+
+        <div class="flex flex-wrap gap-2 w-full md:w-auto">
+            <button *ngIf="selectionMode === 'pendiente'"
+                class="flex items-center justify-center gap-2 px-6 py-2 rounded-lg font-bold text-white shadow-md transition-all select-none outline-none border-none flex-1 md:flex-none"
+                style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);"
+                (click)="openKupocellModal()" pTooltip="Crear factura en cuenta Kupocell">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4 text-white">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />
+                </svg>
+                <span class="text-xs uppercase">Facturar</span>
+            </button>
+            
+            <button *ngIf="selectionMode === 'pendiente'"
+                class="flex items-center justify-center gap-2 px-6 py-2 rounded-lg font-bold bg-white text-green-600 border border-green-600 hover:bg-green-50 shadow-sm transition-all select-none outline-none flex-1 md:flex-none"
+                (click)="markAsFacturada()" pTooltip="Marcar como ya facturada (manualmente)">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                <span class="text-xs uppercase">Marcar Facturada</span>
+            </button>
+            
+            <button *ngIf="selectionMode === 'facturada'"
+                class="flex items-center justify-center gap-2 px-6 py-2 rounded-lg font-bold bg-amber-500 text-white hover:bg-amber-600 shadow-sm transition-all select-none outline-none border-none flex-1 md:flex-none"
+                (click)="markAsPendiente()" pTooltip="Revertir a estado pendiente">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                <span class="text-xs uppercase">Marcar Pendiente</span>
+            </button>
+            <span *ngIf="selectionMode === 'facturada_sistema'"
+                class="text-sm text-surface-500 italic md:self-center w-full md:w-auto text-center md:text-left">
+                Las facturas generadas por el sistema no se pueden revertir
+            </span>
+            <span *ngIf="selectionMode === 'mixed'"
+                class="text-sm text-surface-500 italic md:self-center w-full md:w-auto text-center md:text-left">
+                Seleccione facturas del mismo estado
+            </span>
+        </div>
+    </div>
+
+    <!-- Main Data Table -->
+    <div class="border border-surface-200 rounded-xl bg-white shadow-sm flex flex-col w-full overflow-hidden">
+        <p-table [value]="filteredInvoices()" [(selection)]="selectedInvoices" [loading]="loading()" [paginator]="false"
+            [first]="page * rows" [rows]="rows"
+            styleClass="p-datatable-sm" [scrollable]="false" dataKey="id">
+
+            <ng-template pTemplate="header">
+                <tr class="bg-surface-50 text-surface-600">
+                    <th style="width: 4rem" class="text-center">
+                        <p-tableHeaderCheckbox></p-tableHeaderCheckbox>
+                    </th>
+                    <th pSortableColumn="number">No. Factura <p-sortIcon field="number"></p-sortIcon></th>
+                    <th pSortableColumn="date">Fecha <p-sortIcon field="date"></p-sortIcon></th>
+                    <th>Tienda</th>
+                    <th>Cliente</th>
+                    <th>Producto</th>
+                    <th pSortableColumn="itemsCount" class="text-center">Cant. <p-sortIcon
+                            field="itemsCount"></p-sortIcon></th>
+                    <th pSortableColumn="total" class="text-right">Total <p-sortIcon field="total"></p-sortIcon></th>
+                    <th pSortableColumn="billingStatus" class="text-center">Estado <p-sortIcon
+                            field="billingStatus"></p-sortIcon></th>
+                </tr>
+            </ng-template>
+
+            <ng-template pTemplate="body" let-invoice>
+                <tr class="hover:bg-surface-50 transition-colors cursor-pointer" [pSelectableRow]="invoice">
+                    <td class="text-center">
+                        <p-tableCheckbox [value]="invoice"></p-tableCheckbox>
+                    </td>
+                    <td class="font-semibold text-primary-700 hover:underline"
+                        (click)="openDetail(invoice); $event.stopPropagation()">
+                        {{ invoice.number }}
+                    </td>
+                    <td class="text-surface-600 text-sm">{{ invoice.date | date:'dd/MM/yyyy' }}</td>
+                    <td>
+                        <span
+                            class="px-2.5 py-1 rounded-full text-xs font-medium bg-surface-100 text-surface-700 border border-surface-200">
+                            {{ invoice.storeDisplayName }}
+                        </span>
+                    </td>
+                    <td class="text-surface-700 font-medium">{{ invoice.client }}</td>
+                    <td class="text-surface-600 text-sm max-w-[200px] truncate" [pTooltip]="invoice.productName">
+                        {{ invoice.productName }}
+                    </td>
+                    <td class="text-center">
+                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-semibold"
+                            [class.bg-green-100]="invoice.selectedItemsCount === invoice.itemsCount"
+                            [class.text-green-700]="invoice.selectedItemsCount === invoice.itemsCount"
+                            [class.bg-amber-100]="invoice.selectedItemsCount !== invoice.itemsCount"
+                            [class.text-amber-700]="invoice.selectedItemsCount !== invoice.itemsCount">
+                            {{ invoice.selectedItemsCount }}/{{ invoice.itemsCount }}
+                        </span>
+                    </td>
+                    <td class="text-right font-bold text-surface-800">{{ invoice.total | currency:'COP':'symbol':'1.0-0'
+                        }}</td>
+                    <td class="text-center">
+                        <p-tag
+                            [value]="(invoice.billingStatus === 'facturada_sistema' || invoice.billingStatus === 'facturada') ? 'Facturada' : 'Pendiente'"
+                            [severity]="getStatusSeverity(invoice.billingStatus)">
+                        </p-tag>
+                    </td>
+                </tr>
+            </ng-template>
+
+            <ng-template pTemplate="emptymessage">
+                <tr>
+                    <td colspan="9" class="text-center py-12">
+                        <div class="flex flex-col items-center justify-center">
+                            <i class="pi pi-inbox text-4xl text-surface-300 mb-3"></i>
+                            <h4 class="text-lg font-medium text-surface-700">
+                                {{ hasActiveFilters ? 'No hay resultados con estos filtros' : 'No hay facturas por
+                                facturar' }}
+                            </h4>
+                            <p class="text-surface-500 text-sm max-w-sm mt-1">
+                                {{ hasActiveFilters ? 'Intente ajustar o limpiar los filtros.' : 'Las facturas nuevas
+                                aparecerán aquí automáticamente.' }}
+                            </p>
+                            <button *ngIf="hasActiveFilters"
+                                class="flex items-center justify-center gap-2 px-4 py-2 mt-3 rounded-lg font-bold text-red-600 hover:bg-red-50 transition-all select-none outline-none border border-red-200"
+                                (click)="clearFilters()">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4">
+                                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                                </svg>
+                                <span>Limpiar filtros</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            </ng-template>
+        </p-table>
+
+        <!-- Custom Premium Paginator -->
+        <div class="px-6 py-4 bg-white border-t border-surface-200 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
+            <div class="text-sm text-surface-500 font-medium italic">
+                Mostrando <span class="text-surface-900 font-extrabold tracking-tight">{{ (page * rows) + 1 }}</span> al 
+                <span class="text-surface-900 font-extrabold tracking-tight">{{ (page + 1) * rows > filteredInvoices().length ? filteredInvoices().length : (page + 1) * rows }}</span> de 
+                <span class="text-indigo-600 font-black tracking-tighter px-1 underline decoration-2 decoration-indigo-200 underline-offset-4">{{ filteredInvoices().length }}</span> facturas
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Controls -->
+                <div class="flex items-center gap-1.5 bg-surface-50 p-1.5 rounded-2xl border border-surface-200 shadow-inner">
+                    <button (click)="goToPage(0)" [disabled]="page === 0" 
+                        class="w-8 h-8 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                        [class.text-indigo-600]="page !== 0" [class.text-surface-400]="page === 0">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5" />
+                        </svg>
+                    </button>
+                    <button (click)="goToPage(page - 1)" [disabled]="page === 0"
+                        class="w-8 h-8 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                        [class.text-indigo-600]="page !== 0" [class.text-surface-400]="page === 0">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                        </svg>
+                    </button>
+
+                    <div class="flex items-center space-x-1 px-1">
+                        <button *ngFor="let p of visiblePages" (click)="goToPage(p - 1)"
+                            class="min-w-[32px] h-8 rounded-xl flex items-center justify-center text-[11px] font-black transition-all focus:outline-none select-none hover:text-surface-600 hover:bg-white/50"
+                            [class.bg-white]="page === p - 1" [class.shadow-md]="page === p - 1" [class.text-indigo-600]="page === p - 1"
+                            [class.text-surface-400]="page !== p - 1">
+                            {{ p }}
+                        </button>
+                    </div>
+
+                    <button (click)="goToPage(page + 1)" [disabled]="(page + 1) * rows >= filteredInvoices().length"
+                        class="w-8 h-8 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                        [class.text-indigo-600]="(page + 1) * rows < filteredInvoices().length" [class.text-surface-400]="(page + 1) * rows >= filteredInvoices().length">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </button>
+                    <button (click)="goToPage(totalPages - 1)" [disabled]="(page + 1) * rows >= filteredInvoices().length"
+                        class="w-8 h-8 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                        [class.text-indigo-600]="(page + 1) * rows < filteredInvoices().length" [class.text-surface-400]="(page + 1) * rows >= filteredInvoices().length">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-3.5 h-3.5">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5" />
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Jump to box -->
+                <div class="flex items-center gap-2 bg-white border border-surface-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                    <span class="text-[10px] uppercase font-bold text-surface-400 tracking-tighter">Página</span>
+                    <input type="number" [value]="page + 1" (change)="jumpToPage($event)"
+                        class="w-10 h-5 text-center text-xs font-bold text-indigo-600 bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 transition-all select-all shadow-inner">
+                    <span class="text-[10px] uppercase font-bold text-surface-400 tracking-tighter">de {{ totalPages }}</span>
+                </div>
+
+                <!-- Select Box -->
+                <div class="flex items-center gap-2">
+                    <select [(ngModel)]="rows" (change)="page = 0"
+                        class="appearance-none bg-surface-100 text-surface-600 text-[10px] font-bold px-3 py-1.5 rounded-xl border border-surface-200 focus:outline-none focus:ring-2 focus:ring-indigo-100 hover:bg-surface-200 transition-all cursor-pointer shadow-sm uppercase tracking-tighter">
+                        <option [ngValue]="20">20 por pág.</option>
+                        <option [ngValue]="50">50 por pág.</option>
+                        <option [ngValue]="100">100 por pág.</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Drawer -->
+    <app-billing-wizard [(visible)]="isWizardVisible" [selectedCount]="selectedInvoices.length"
+        (onProcess)="onWizardProcess($event)">
+    </app-billing-wizard>
+
+    <!-- Detail Modal -->
+    <app-invoice-detail-modal [(visible)]="isDetailVisible" [invoice]="detailInvoice"
+        (onConfirm)="onDetailConfirm($event)" (onSaved)="loadInvoices()">
+    </app-invoice-detail-modal>
+
+    <!-- Kupocell Invoice Modal -->
+    <app-kupocell-invoice-modal [(visible)]="isKupocellModalVisible" [invoices]="selectedInvoices"
+        (onComplete)="onKupocellComplete()">
+    </app-kupocell-invoice-modal>
+</div>
+
+<style>
+    .animate-fade-in {
+        animation: fadeIn 0.2s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(-5px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @media (max-width: 640px) {
+
+        /* Oculta páginas numeradas en el paginador para ahorrar espacio en móvil */
+        :host ::ng-deep .p-paginator .p-paginator-pages {
+            display: none !important;
+        }
+
+        /* Oculta dropdown de registros por página en móvil */
+        :host ::ng-deep .p-paginator .p-dropdown {
+            display: none !important;
+        }
+
+        /* Ajustes de flex para el reporte de paginación actual */
+        :host ::ng-deep .p-paginator .p-paginator-current {
+            margin: 0 auto;
+            width: 100%;
+            text-align: center;
+        }
+    }
+
+
+    :host ::ng-deep .custom-table-wrapper .p-datatable th {
+        background-color: #f8fafc;
+        color: #475569;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        padding: 1rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+
+    :host ::ng-deep .custom-table-wrapper .p-datatable td {
+        padding: 1rem;
+        border-bottom: 1px solid #f1f5f9;
+        white-space: nowrap;
+    }
+</style>

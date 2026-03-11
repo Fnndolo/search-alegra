@@ -1,333 +1,503 @@
-<div class="card !bg-white !shadow-xl !rounded-xl !p-6">
-  <div class="p-inputgroup !flex !flex-col lg:!flex-row lg:!items-center lg:!justify-between !gap-4 !mb-8">
-    <div class="!flex !flex-col md:!flex-row !gap-4 !items-start md:!items-center !w-full lg:!w-auto">
-      <!-- Selector de tienda -->
-      <div class="flex flex-col">
-        <label class="text-sm font-medium text-gray-700 mb-1">Tienda:</label>
-        <select
-          [(ngModel)]="selectedStore"
-          (change)="onStoreChange()"
-          class="border border-gray-300 rounded px-3 py-2 min-w-[200px]"
-        >
-          <option *ngFor="let store of stores" [value]="store.value">
-            {{ store.label }}
-          </option>
-        </select>
+<div class="flex flex-col bg-surface-50 min-h-full w-full">
+  <p-toast></p-toast>
+
+  <!-- Header -->
+  <header
+    class="h-16 bg-white border-b border-surface-200 flex items-center justify-between px-6 shrink-0 shadow-sm sticky top-0 z-30">
+    <div>
+      <h1 class="text-xl font-bold text-surface-900 leading-none">Buscador de Facturas</h1>
+      <p class="text-surface-500 text-sm mt-0.5 flex items-center gap-1.5"><i
+          class="pi pi-sparkles text-primary-500 text-xs"></i> Encuentre rápidamente ventas y compras</p>
+    </div>
+    
+    <app-profile-menu class="hidden md:block"></app-profile-menu>
+  </header>
+
+  <div class="flex-1 flex flex-col p-4 md:p-6 w-full max-w-full relative">
+    <!-- Top Filter Bar -->
+    <div class="bg-surface-50 border border-surface-200 rounded-xl p-4 mb-4 shrink-0">
+      <!-- Row 1: Search +  Type + Status + Store -->
+      <div class="flex flex-col md:flex-row flex-wrap gap-3 md:items-center w-full">
+        <!-- Global Search -->
+        <span class="relative w-full md:w-auto md:flex-grow-0">
+          <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 z-10"></i>
+          <input pInputText type="text" placeholder="Buscar ID, nombre, cliente..."
+            class="w-full md:w-64 pl-10 pr-4 py-2 rounded-lg border-surface-300 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            [(ngModel)]="filterValue" (input)="onFilterChange()" />
+        </span>
+
+        <!-- Tipo Documento -->
+        <p-dropdown [options]="invoiceTypes" [(ngModel)]="selectedInvoiceType" placeholder="Tipo"
+          styleClass="w-full md:w-44" optionLabel="label" optionValue="value" (onChange)="onInvoiceTypeChange()">
+        </p-dropdown>
+
+        <!-- Store Filter -->
+        <p-dropdown [options]="stores" [(ngModel)]="selectedStore" placeholder="Tienda" styleClass="w-full md:w-44"
+          optionLabel="label" optionValue="value" [filter]="false" (onChange)="onStoreChange()">
+        </p-dropdown>
+
+        <!-- Status Filter -->
+        <p-dropdown [options]="statuses" [(ngModel)]="selectedStatus" placeholder="Estado" styleClass="w-full md:w-44"
+          optionLabel="label" optionValue="value" (onChange)="onFilterChange(true)">
+        </p-dropdown>
+
+        <div class="flex flex-wrap gap-2 w-full md:w-auto mt-2 md:mt-0 ml-auto justify-end">
+          <!-- Masiva -->
+          <button (click)="openMassiveSearchModal()"
+            class="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-md transition-all select-none outline-none border-none">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+            </svg>
+            <span class="text-xs uppercase">Masiva</span>
+          </button>
+          
+          <!-- Exportar -->
+          <button (click)="openExportModal()"
+            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md transition-all select-none outline-none border-none">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span class="text-xs uppercase">Excel</span>
+          </button>
+          
+          <!-- Limpiar -->
+          <button (click)="clearFilters()" [disabled]="!hasActiveFilters"
+            class="flex items-center gap-2 px-4 py-2 rounded-lg font-bold shadow-sm transition-all select-none outline-none border disabled:opacity-30 disabled:cursor-not-allowed"
+            [ngClass]="hasActiveFilters ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-surface-50 text-surface-400 border-surface-200'">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+            </svg>
+            <span class="text-xs uppercase">Limpiar</span>
+          </button>
+          
+          <!-- Actualizar -->
+          <button (click)="refreshInvoices()"
+            class="flex items-center gap-2 px-4 py-2 bg-white hover:bg-surface-50 text-surface-700 rounded-lg font-bold shadow-md border border-surface-200 transition-all select-none outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span class="text-xs uppercase">Actualizar</span>
+          </button>
+          
+          <!-- Sync Pagos Hoy -->
+          <button *ngIf="selectedInvoiceType === 'sales'" (click)="syncMissingPayments()" [disabled]="loading"
+            class="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-md transition-all select-none outline-none border-none disabled:opacity-50">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-xs uppercase">Sync Facturas Sin Pago</span>
+          </button>
+        </div>
       </div>
 
-      <!-- Selector de tipo de factura -->
-      <div class="flex flex-col">
-        <label class="text-sm font-medium text-gray-700 mb-1">Tipo:</label>
-        <select
-          [(ngModel)]="selectedInvoiceType"
-          (change)="onInvoiceTypeChange()"
-          class="border border-gray-300 rounded px-3 py-2"
-        >
-          <option *ngFor="let type of invoiceTypes" [value]="type.value">
-            {{ type.label }}
-          </option>
-        </select>
-      </div>
+      <!-- Row 2: Date Range + Price Range -->
+      <div
+        class="flex flex-col lg:flex-row flex-wrap gap-4 lg:items-center mt-3 pt-3 border-t border-surface-200 w-full">
+        <!-- Date Range -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
+          <span class="text-sm font-semibold text-surface-600 whitespace-nowrap hidden sm:inline">Fecha:</span>
+          <div class="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
+            <p-datepicker [(ngModel)]="dateFrom" placeholder="Desde" dateFormat="dd/mm/yy" [showIcon]="true"
+              styleClass="w-full sm:w-40" inputStyleClass="py-2 text-sm w-full" (onSelect)="onFilterChange(true)"
+              (onClear)="onFilterChange(true)" [showClear]="true">
+            </p-datepicker>
+            <p-datepicker [(ngModel)]="dateTo" placeholder="Hasta" dateFormat="dd/mm/yy" [showIcon]="true"
+              styleClass="w-full sm:w-40" inputStyleClass="py-2 text-sm w-full" (onSelect)="onFilterChange(true)"
+              (onClear)="onFilterChange(true)" [showClear]="true">
+            </p-datepicker>
+          </div>
+        </div>
 
-      <!-- Filtro de búsqueda -->
-      <div class="flex flex-col">
-        <label class="text-sm font-medium text-gray-700 mb-1">Filtrar:</label>
-        <input
-          type="text"
-          pInputText
-          placeholder="Buscar por ID, cliente/proveedor, cédula, tienda, item, vendedor, anotación o descripción"
-          [(ngModel)]="filterValue"
-          (input)="onFilterChange()"
-          class="p-inputtext !border-2 !border-blue-700 !text-gray-800 !bg-white !placeholder-gray-400 hover:!bg-blue-50 !transition !font-medium !rounded-lg !px-4 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !w-full md:!w-80 !shadow-sm"
-        />
+        <!-- Results count -->
+        <div class="w-full lg:w-auto lg:ml-auto text-sm text-surface-500 text-center sm:text-right mt-1 lg:mt-0">
+          <span class="text-primary-600 font-bold">{{ invoices.length }}</span> en pantalla de <span
+            class="text-surface-700 font-bold">{{ totalRecords }}</span> coincidentes totales
+        </div>
       </div>
     </div>
 
-    <div class="!flex !gap-2 !flex-col md:!flex-row">
-      <button
-        pButton
-        type="button"
-        label="Búsqueda Masiva"
-        (click)="openMassiveSearchModal()"
-        icon="pi pi-search"
-        class="p-button-outlined !border-2 !border-green-600 !text-green-700 !bg-white hover:!bg-green-100 !transition !font-semibold !rounded-lg !px-6 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-green-400 !shadow-sm !w-full md:!w-auto"
-      ></button>
-
-      <button
-        pButton
-        type="button"
-        label="Exportar Datos"
-        (click)="openExportModal()"
-        icon="pi pi-download"
-        class="p-button-outlined !border-2 !border-purple-600 !text-purple-700 !bg-white hover:!bg-purple-100 !transition !font-semibold !rounded-lg !px-6 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-purple-400 !shadow-sm !w-full md:!w-auto"
-      ></button>
-
-      <button
-        pButton
-        type="button"
-        label="Actualizar nuevas facturas"
-        (click)="refreshInvoices()"
-        icon="pi pi-refresh"
-        class="p-button-outlined !border-2 !border-blue-700 !text-blue-700 !bg-white hover:!bg-blue-100 !transition !font-semibold !rounded-lg !px-8 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400 !shadow-sm !w-full md:!w-auto"
-      ></button>
+    <!-- Indicadores de Carga -->
+    <div *ngIf="loading"
+      class="mb-4 bg-primary-50 border border-primary-200 text-primary-700 p-3 rounded-xl flex items-center gap-3 animate-fade-in shadow-sm">
+      <i class="pi pi-spin pi-spinner text-xl"></i>
+      <span class="font-medium">Descargando registros y re-sincronizando...</span>
     </div>
-  </div>
-  <div *ngIf="loading" class="p-mb-2 !text-blue-700 !font-semibold">
-    <p *ngIf="selectedInvoiceType !== '' && selectedStore !== ''">Descargando facturas...</p>
-  </div>
-  <div *ngIf="progress > 0" class="p-mb-2 !text-blue-700 !font-semibold">
-    <p *ngIf="selectedInvoiceType !== '' && selectedStore !== ''">Progreso: {{ progress }} facturas descargadas.</p>
-  </div>
-  <div *ngIf="!loading && invoices.length === 0 && !updating" class="p-mb-2 !text-red-600 !font-semibold">
-    <p>{{ selectedInvoiceType === '' || selectedStore === '' ? "Seleccione tienda y un tipo de factura para ver resultados." : "No se encontraron resultados para el filtro ingresado." }}</p>
-  </div>
-  <div *ngIf="selectedInvoiceType !== '' && selectedStore !== ''" class="table-container !overflow-x-auto !rounded-xl !border !border-gray-200 !bg-gray-50 !shadow-lg">
-    <p-table
-      [value]="invoices"
-      [paginator]="true"
-      [rows]="rows"
-      [totalRecords]="totalRecords"
-      [lazy]="true"
-      [loading]="loading"
-      [responsiveLayout]="'scroll'"
-      [showCurrentPageReport]="true"
-      currentPageReportTemplate="Mostrando {first} a {last} de {totalRecords} facturas"
-      [rowsPerPageOptions]="[10, 25, 50]"
-      (onLazyLoad)="loadInvoicesLazy($event)"
-      class="!w-full custom-paginator"
-    >
-      <ng-template pTemplate="header">
-        <tr class="!bg-blue-800 !text-white !text-sm">
-          <th class="!px-6 !py-4 !font-bold !text-left !rounded-tl-xl">Creación</th>
-          <th class="!px-6 !py-4 !font-bold !text-left">Número</th>
-          <th class="!px-6 !py-4 !font-bold !text-left">
-            {{ selectedInvoiceType === 'sales' ? 'Cliente' : 'Proveedor' }}
-          </th>
-          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Cédula</th>
-          <th *ngIf="selectedStore === 'todas'" class="!px-6 !py-4 !font-bold !text-left">Tienda</th>
-          <th class="!px-6 !py-4 !font-bold !text-left">
-            {{ selectedInvoiceType === 'sales' ? 'Item' : 'Items' }}
-          </th>
-          <th class="!px-6 !py-4 !font-bold !text-left">Anotación</th>
-          <th class="!px-6 !py-4 !font-bold !text-left">Descripción</th>
-          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Método de Pago</th>
-          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Vendedor</th>
-          <th *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !font-bold !text-left">Estado</th>
-          <th class="!px-6 !py-4 !font-bold !text-left !rounded-tr-xl">Acción</th>
-        </tr>
-      </ng-template>
-      <ng-template pTemplate="body" let-invoice>
-        <tr
-          class="!bg-white !border-b !border-gray-100 hover:!bg-blue-50 !transition !shadow-sm"
-          [class.new-invoice-animation]="isNewInvoice(invoice.id)"
-          [class.deleted-invoice-animation]="isDeletedInvoice(invoice.id)"
-        >
-          <td class="!px-6 !py-4 !text-gray-700 whitespace-nowrap">{{ invoice.date }}</td>
-          <td class="!px-6 !py-4 !font-mono !font-bold !text-blue-900">{{ invoice.numberTemplate.number }}</td>
-          <td class="!px-6 !py-4 !text-gray-900">
-            {{ selectedInvoiceType === 'sales' ? invoice.client?.name : invoice.provider?.name }}
-          </td>
-          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
-            {{ invoice.client?.identification || 'N/A' }}
-          </td>
-          <td *ngIf="selectedStore === 'todas'" class="!px-6 !py-4 !text-gray-700 !uppercase whitespace-nowrap">
-            {{ invoice.tienda }}
-          </td>
-          <td class="!px-6 !py-4 !text-gray-700">
-            <span *ngIf="selectedInvoiceType === 'sales'">
-              {{ invoice.items[0]?.name }}
-            </span>
-            <span *ngIf="selectedInvoiceType === 'purchases'">
-              <span *ngFor="let item of invoice.purchases?.items; let i = index">
-                {{ item.name }}<span *ngIf="i < invoice.purchases.items.length - 1">, </span>
-              </span>
-            </span>
-          </td>
-          <td class="!px-6 !py-4 !text-gray-700">
-            {{ invoice.anotation }}
-          </td>
-          <td class="!px-6 !py-4 !text-gray-700">
-            <span *ngIf="selectedInvoiceType === 'sales'">
-              <span *ngFor="let item of invoice.items; let i = index">
-                {{ item.description }}<span *ngIf="i < invoice.items.length - 1">, </span>
-              </span>
-            </span>
-            <span *ngIf="selectedInvoiceType === 'purchases'">
-              <span *ngFor="let item of invoice.purchases?.items; let i = index">
-                {{ item.description }}<span *ngIf="i < invoice.purchases.items.length - 1">, </span>
-              </span>
-            </span>
-          </td>
-          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
-            {{ invoice.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE' }}
-          </td>
-          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4 !text-gray-700">
-            {{ invoice.seller?.name || 'N/A' }}
-          </td>
-          <td *ngIf="selectedInvoiceType === 'sales'" class="!px-6 !py-4">
-            <span
-              class="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap"
-              [ngStyle]="{
-                'background-color': getStatusColor(invoice.status).bg,
-                'color': getStatusColor(invoice.status).text
-              }"
-            >
-              {{ getStatusText(invoice.status) }}
-            </span>
-          </td>
-          <td class="!px-6 !py-4">
-            <button
-              pButton
-              type="button"
-              label="Ver"
-              (click)="selectedInvoiceType === 'sales' ? goToAlegra(invoice.id) : goToAlegraBills(invoice.id)"
-              icon="pi pi-refresh"
-              class="p-button-outlined !border-2 !border-blue-600 !text-blue-700 !bg-white hover:!bg-blue-100 !transition !font-semibold !rounded-xl !px-5 !py-2 focus:!outline-none focus:!ring-2 focus:!ring-blue-400"
-            >
-              <i class="fa fa-external-link-alt"></i>
-            </button>
-          </td>
-        </tr>
-      </ng-template>
+    <div *ngIf="progress > 0 && !loading"
+      class="mb-4 bg-green-50/50 border border-green-200 text-green-700 p-3 rounded-xl flex items-center gap-3 animate-fade-in shadow-sm">
+      <i class="pi pi-check-circle text-green-500 text-xl"></i>
+      <span class="font-medium text-sm">Mostrando progreso reciente: {{ progress }} facturas listas en caché para la
+        operación.</span>
+    </div>
+    <div *ngIf="!loading && invoices.length === 0 && !updating"
+      class="mb-4 bg-amber-50 border border-amber-200 p-6 rounded-xl flex flex-col items-center justify-center animate-fade-in text-center shadow-sm py-16">
+      <div class="w-16 h-16 rounded-full bg-amber-100 flex items-center justify-center mb-4">
+        <i class="pi pi-folder-open text-3xl text-amber-500"></i>
+      </div>
+      <span class="font-bold text-lg text-amber-900">{{ selectedInvoiceType === '' || selectedStore === '' ? "Parámetros
+        Incompletos" : "No se encontraron resultados" }}</span>
+      <span class="text-sm text-amber-700 mt-2 max-w-sm font-medium">Seleccione los filtros pertinentes en la barra
+        superior o presione en "Actualizar" para traer movimientos nuevos directamente desde la API.</span>
+    </div>
 
-    </p-table>
+    <!-- Tabla -->
+    <div *ngIf="selectedInvoiceType !== '' && selectedStore !== '' && (invoices.length > 0 || loading)"
+      class="border border-surface-200 rounded-xl bg-white shadow-sm flex flex-col w-full overflow-hidden custom-table-wrapper animate-fade-in flex-1">
+      <p-table [value]="invoices" [paginator]="false" [rows]="rows" [totalRecords]="totalRecords" [lazy]="true"
+        [loading]="loading" (onLazyLoad)="loadInvoicesLazy($event)" styleClass="p-datatable-sm"
+        [scrollable]="false">
+
+        <ng-template pTemplate="header">
+          <tr class="bg-surface-50 text-surface-600 border-b border-surface-200">
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4">Fec. Emisión</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4">No. Fact.</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4">{{ selectedInvoiceType === 'sales' ?
+              'Cliente' : 'Proveedor' }}</th>
+            <th *ngIf="selectedInvoiceType === 'sales'"
+              class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center">Cédula</th>
+            <th *ngIf="selectedStore === 'todas'" class="font-semibold uppercase text-[11px] tracking-wider py-4">Bodega
+              / Tienda</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4 min-w-[200px]">{{ selectedInvoiceType ===
+              'sales' ? 'Item Ppal' : 'Items' }}</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4 max-w-[150px]">Anotación</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4 min-w-[200px]">Descripción Logística</th>
+            <th *ngIf="selectedInvoiceType === 'sales'"
+              class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center">Ingreso a</th>
+            <th *ngIf="selectedInvoiceType === 'sales'" class="font-semibold uppercase text-[11px] tracking-wider py-4">
+              Vendedor</th>
+            <th *ngIf="selectedInvoiceType === 'sales'"
+              class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center w-24">Estado</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center w-20">Vista</th>
+          </tr>
+        </ng-template>
+
+        <ng-template pTemplate="body" let-invoice>
+          <tr class="hover:bg-primary-50/30 transition-colors border-b border-surface-100"
+            [class.bg-green-50]="newInvoiceIds.includes(invoice.id)"
+            [class.bg-red-50]="deletedInvoiceIds.includes(invoice.id)">
+
+            <td class="text-sm text-surface-500 font-medium whitespace-nowrap" [innerHTML]="invoice.date | date:'dd/MM/yyyy' | highlight:filterValue">
+            </td>
+            <td class="font-extrabold text-primary-700 whitespace-nowrap tracking-tight" [innerHTML]="(invoice.numberTemplate?.number || invoice.number) | highlight:filterValue"></td>
+            <td class="text-sm font-semibold text-surface-800" [innerHTML]="(selectedInvoiceType === 'sales' ? invoice.client?.name : invoice.provider?.name) | highlight:filterValue"></td>
+            <td *ngIf="selectedInvoiceType === 'sales'" class="text-sm text-surface-500 font-mono text-center" [innerHTML]="(invoice.client?.identification || '--') | highlight:filterValue"></td>
+            <td *ngIf="selectedStore === 'todas'" class="text-[10px] font-bold text-surface-600">
+              <span class="py-1 px-2.5 rounded-full bg-surface-100 border border-surface-200 inline-block" [innerHTML]="invoice.tienda | highlight:filterValue"></span>
+            </td>
+
+            <!-- Items -->
+            <td class="text-sm text-surface-700 min-w-[200px]">
+              <span *ngIf="selectedInvoiceType === 'sales'" class="truncate block max-w-[250px] font-medium"
+                [pTooltip]="invoice.items?.[0]?.name" [innerHTML]="invoice.items?.[0]?.name | highlight:filterValue">
+              </span>
+              <div *ngIf="selectedInvoiceType === 'purchases'" class="flex flex-col gap-0.5">
+                <span *ngFor="let item of invoice.purchases?.items"
+                  class="truncate max-w-[250px] block text-xs text-surface-600 font-medium"
+                  [pTooltip]="item.name" [innerHTML]="item.name | highlight:filterValue">
+                </span>
+              </div>
+            </td>
+
+            <!-- Anotación -->
+            <td class="text-xs text-surface-400 font-medium max-w-[150px] truncate" [pTooltip]="invoice.anotation" [innerHTML]="(invoice.anotation || '--') | highlight:filterValue">
+            </td>
+
+            <!-- Descripciones -->
+            <td class="text-xs text-surface-600 min-w-[200px] whitespace-normal leading-relaxed py-2">
+              <div *ngIf="selectedInvoiceType === 'sales'" class="flex flex-col gap-1.5">
+                <div *ngFor="let item of invoice.items" [innerHTML]="item.description | highlight:filterValue">
+                </div>
+              </div>
+              <div *ngIf="selectedInvoiceType === 'purchases'" class="flex flex-col gap-1.5">
+                <div *ngFor="let item of invoice.purchases?.items" [innerHTML]="item.description | highlight:filterValue">
+                </div>
+              </div>
+            </td>
+
+            <!-- Método y Vendedor -->
+            <td *ngIf="selectedInvoiceType === 'sales'" class="text-xs text-surface-500 font-medium whitespace-nowrap">
+              {{ invoice.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE' }}
+            </td>
+            <td *ngIf="selectedInvoiceType === 'sales'"
+              class="text-xs text-surface-700 font-semibold uppercase whitespace-nowrap" [innerHTML]="(invoice.seller?.name || '--') | highlight:filterValue">
+            </td>
+
+            <!-- Estado -->
+            <td *ngIf="selectedInvoiceType === 'sales'" class="text-center w-24">
+              <span
+                class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border whitespace-nowrap"
+                [ngStyle]="{'background-color': getStatusColor(invoice.status).bg, 'color': getStatusColor(invoice.status).text, 'border-color': getStatusColor(invoice.status).text}">
+                {{ getStatusText(invoice.status) }}
+              </span>
+            </td>
+
+            <!-- Acción -->
+            <td class="text-center w-20">
+              <button
+                class="px-3 py-1.5 rounded-lg inline-flex items-center justify-center gap-2 bg-white border border-surface-200 shadow-sm text-primary-600 hover:bg-primary-50 transition-all focus:outline-none focus:ring-2 focus:ring-primary-200 group"
+                (click)="selectedInvoiceType === 'sales' ? goToAlegra(invoice.id) : goToAlegraBills(invoice.id)"
+                title="Abrir Original">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 transition-transform group-hover:scale-110">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                </svg>
+                <span class="text-[10px] font-bold uppercase tracking-tight">Ver</span>
+              </button>
+            </td>
+          </tr>
+        </ng-template>
+
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td colspan="12" class="text-center p-0">
+              <div class="py-16 bg-surface-50 text-surface-500 font-medium w-full rounded-b-xl text-sm">
+                No se encontraron datos coincidiendo con estos filtros en el rango consultado.
+              </div>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+
+      <!-- Custom Premium Paginator -->
+      <div class="px-6 py-4 bg-white border-t border-surface-200 flex flex-col md:flex-row items-center justify-between gap-4 shrink-0">
+          <div class="text-sm text-surface-500 font-medium">
+              Mostrando <span class="text-surface-900 font-extrabold">{{ (page * rows) + 1 }}</span> al 
+              <span class="text-surface-900 font-extrabold">{{ (page + 1) * rows > totalRecords ? totalRecords : (page + 1) * rows }}</span> de 
+              <span class="text-primary-600 font-black tracking-tight decoration-primary-200 underline decoration-2 underline-offset-4 px-1">{{ totalRecords }}</span> comprobantes
+          </div>
+
+          <div class="flex flex-wrap items-center gap-3">
+              <!-- Controls -->
+              <div class="flex items-center gap-1.5 bg-surface-50 p-1.5 rounded-2xl border border-surface-200 shadow-inner">
+                  <button (click)="goToPage(0)" [disabled]="page === 0" 
+                      class="w-9 h-9 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                      [class.text-primary-600]="page !== 0" [class.text-surface-400]="page === 0">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m18.75 4.5-7.5 7.5 7.5 7.5m-6-15L5.25 12l7.5 7.5" />
+                      </svg>
+                  </button>
+                  <button (click)="goToPage(page - 1)" [disabled]="page === 0"
+                      class="w-9 h-9 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                      [class.text-primary-600]="page !== 0" [class.text-surface-400]="page === 0">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" />
+                      </svg>
+                  </button>
+
+                  <div class="flex items-center px-1">
+                      <ng-container *ngFor="let p of visiblePages">
+                        <button (click)="goToPage(p - 1)"
+                          class="min-w-[36px] h-9 rounded-xl flex items-center justify-center text-xs font-black transition-all focus:outline-none select-none hover:text-surface-600 hover:bg-white/50"
+                          [class.bg-white]="page === p - 1" [class.shadow-md]="page === p - 1" [class.text-primary-600]="page === p - 1"
+                          [class.text-surface-400]="page !== (p - 1)">
+                          {{ p }}
+                        </button>
+                      </ng-container>
+                  </div>
+
+                  <button (click)="goToPage(page + 1)" [disabled]="(page + 1) * rows >= totalRecords"
+                      class="w-9 h-9 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                      [class.text-primary-600]="(page + 1) * rows < totalRecords" [class.text-surface-400]="(page + 1) * rows >= totalRecords">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+                      </svg>
+                  </button>
+                  <button (click)="goToPage(totalPages - 1)" [disabled]="(page + 1) * rows >= totalRecords"
+                      class="w-9 h-9 rounded-xl flex items-center justify-center transition-all focus:outline-none disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white hover:shadow-sm"
+                      [class.text-primary-600]="(page + 1) * rows < totalRecords" [class.text-surface-400]="(page + 1) * rows >= totalRecords">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="m5.25 4.5 7.5 7.5-7.5 7.5m6-15 7.5 7.5-7.5 7.5" />
+                      </svg>
+                  </button>
+              </div>
+
+              <!-- Jump to page box -->
+              <div class="flex items-center gap-2.5 bg-white border border-surface-200 rounded-2xl px-3 py-1.5 shadow-sm">
+                  <span class="text-[10px] uppercase font-bold text-surface-400 tracking-tighter">Página</span>
+                  <input type="number" [value]="page + 1" (change)="jumpToPage($event)"
+                      class="w-12 h-6 text-center text-xs font-bold text-primary-600 bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 transition-all select-all">
+                  <span class="text-[10px] uppercase font-bold text-surface-400 tracking-tighter">de {{ totalPages }}</span>
+              </div>
+
+              <!-- Rows selector -->
+              <div class="flex items-center gap-2 ml-1">
+                  <select [(ngModel)]="rows" (change)="page = 0; filterInvoicesLocal()"
+                      class="appearance-none bg-surface-100 text-surface-600 text-xs font-bold px-4 py-2 rounded-2xl border border-surface-200 focus:outline-none focus:ring-2 focus:ring-primary-100 hover:bg-surface-200 transition-all cursor-pointer shadow-sm">
+                      <option [ngValue]="15">15 por pág.</option>
+                      <option [ngValue]="30">30 por pág.</option>
+                      <option [ngValue]="50">50 por pág.</option>
+                      <option [ngValue]="100">100 por pág.</option>
+                  </select>
+              </div>
+          </div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- Modal de Búsqueda Masiva (HTML/CSS simple) -->
-<div
-  *ngIf="showMassiveSearchModal"
-  class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-  (click)="closeMassiveSearchModal()"
->
+<!-- MODAL: BÚSQUEDA MASIVA -->
+<div *ngIf="showMassiveSearchModal"
+  class="fixed inset-0 bg-surface-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+  (click)="closeMassiveSearchModal()">
   <div
-    class="bg-white rounded-lg shadow-xl w-11/12 max-w-6xl max-h-90vh overflow-y-auto"
-    (click)="$event.stopPropagation()"
-  >
-    <!-- Header -->
-    <div class="bg-blue-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
-      <h2 class="text-xl font-bold">🔍 Búsqueda Masiva de IMEIs</h2>
-      <button
-        (click)="closeMassiveSearchModal()"
-        class="text-white hover:text-gray-200 text-2xl font-bold"
-      >
-        ×
+    class="bg-white text-surface-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden transform transition-all border border-surface-200"
+    (click)="$event.stopPropagation()">
+
+    <!-- Header Modal -->
+    <div class="px-7 py-5 border-b border-surface-200 flex justify-between items-center bg-white shrink-0">
+      <h2 class="text-xl font-extrabold text-surface-900 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-primary-50 flex items-center justify-center text-primary-600">
+          <i class="pi pi-search-plus text-lg"></i>
+        </div>
+        Búsqueda Masiva de Registros
+      </h2>
+      <button (click)="closeMassiveSearchModal()"
+        class="w-8 h-8 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-surface-500 hover:text-surface-700 transition-colors">
+        <i class="pi pi-times text-sm font-bold"></i>
       </button>
     </div>
 
-    <!-- Content -->
-    <div class="p-6 space-y-6">
-
-      <!-- Instrucciones -->
-      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h4 class="text-blue-800 font-semibold mb-2">📋 Instrucciones:</h4>
-        <ul class="text-blue-700 text-sm space-y-1">
-          <li>• Pega la lista de IMEIs separados por espacios o saltos de línea</li>
-          <li>• El sistema buscará en las descripciones y observaciones de los items</li>
-          <li>• Te mostrará cuáles se encontraron y cuáles no</li>
-        </ul>
+    <!-- Body Modal -->
+    <div class="p-7 overflow-y-auto flex-1 bg-surface-50">
+      <div
+        class="flex items-start gap-3 text-sm text-primary-800 mb-6 bg-primary-50 border border-primary-200/50 rounded-xl p-4 shadow-sm">
+        <i class="pi pi-info-circle text-primary-500 mt-0.5 text-lg"></i>
+        <p class="font-medium leading-relaxed">
+          Pegue los <b>IMEIs</b> (o seriales) separados por salto de línea. El buscador interceptará los comprobantes en
+          caché donde se mencionen en sus descripciones automáticamente.
+        </p>
       </div>
 
-      <!-- Textarea para IMEIs -->
-      <div class="flex flex-col">
-        <label class="text-sm font-medium text-gray-700 mb-2">Lista de IMEIs:</label>
-        <textarea
-          [(ngModel)]="massiveSearchText"
-          placeholder="Ejemplo:&#10;864436073433626&#10;864436073031842&#10;864436072725063&#10;864436073386543"
-          rows="6"
-          class="border-2 border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:border-blue-500 focus:outline-none"
-        ></textarea>
+      <div class="mb-6">
+        <label class="block text-xs font-bold text-surface-600 mb-2 uppercase tracking-wide ml-1">Listado de Códigos
+          Puros:</label>
+        <textarea [(ngModel)]="massiveSearchText" rows="6" placeholder="86443607...&#10;86443609...&#10;..."
+          class="w-full border-2 border-surface-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 resize-none font-mono text-surface-800 shadow-sm transition-all bg-white font-medium">
+                </textarea>
       </div>
 
-      <!-- Botones de acción -->
-      <div class="flex gap-2 justify-end">
-        <button
-          (click)="closeMassiveSearchModal()"
-          class="px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition"
-        >
-          Cancelar
+      <!-- Botones Accion Masiva -->
+      <div class="flex justify-end gap-3 shrink-0">
+        <button (click)="closeMassiveSearchModal()"
+          class="px-5 py-2.5 rounded-xl text-sm font-bold text-surface-600 hover:bg-surface-100 transition-all select-none outline-none">
+          Descartar
         </button>
-
-        <button
-          (click)="performMassiveSearch()"
-          [disabled]="!massiveSearchText.trim() || massiveSearchLoading"
-          class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-        >
-          <span *ngIf="massiveSearchLoading">Buscando...</span>
-          <span *ngIf="!massiveSearchLoading">🔍 Buscar</span>
+        <button (click)="performMassiveSearch()" [disabled]="!massiveSearchText.trim() || massiveSearchLoading"
+          class="px-6 py-2.5 rounded-xl text-sm font-bold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-green-200 transition-all flex items-center gap-2 select-none outline-none border-none">
+          <svg *ngIf="!massiveSearchLoading" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+          </svg>
+          <svg *ngIf="massiveSearchLoading" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          {{ massiveSearchLoading ? 'Procesando Caché...' : 'Ejecutar Cruce Inmediato' }}
         </button>
       </div>
 
       <!-- Resultados -->
-      <div *ngIf="massiveSearchResults" class="mt-6 border-t pt-6">
-        <h4 class="text-lg font-semibold mb-4">📊 Resultados de la búsqueda:</h4>
+      <div *ngIf="massiveSearchResults" class="mt-8 border-t border-surface-200 pt-8 animate-fade-in relative">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          <!-- IMEIs Encontrados -->
-          <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-            <h5 class="text-green-800 font-semibold mb-2">
-              ✅ Encontrados ({{ massiveSearchResults.found.length }})
+        <h4
+          class="text-lg font-extrabold mb-5 text-surface-900 flex justify-between items-center bg-white py-2 px-4 rounded-lg shadow-sm border border-surface-200">
+          Resultados del Cruce
+          <div class="flex items-center gap-2">
+            <span class="text-xs tracking-wide uppercase font-bold text-surface-500">Muestras:</span>
+            <span
+              class="text-sm font-bold text-primary-700 bg-primary-50 px-3 py-1 rounded-full border border-primary-200">{{
+              massiveSearchResults.totalSearched }} analizados</span>
+          </div>
+        </h4>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <!-- ENCONTRADOS -->
+          <div
+            class="bg-white border-2 border-green-500/20 rounded-2xl p-5 flex flex-col shadow-sm relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-green-500/5 rounded-full -translate-y-1/2 translate-x-1/2">
+            </div>
+            <h5 class="text-green-800 font-extrabold mb-4 flex items-center justify-between text-lg relative z-10">
+              <span class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 text-green-500">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                Coincidencias</span>
+              <span
+                class="bg-green-100 text-green-800 border border-green-200 px-3 py-1 rounded-full text-xs shadow-sm">{{
+                massiveSearchResults.found.length }}</span>
             </h5>
-            <div class="max-h-64 overflow-y-auto">
+            <div class="flex-1 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar relative z-10 space-y-2">
+              <div *ngIf="massiveSearchResults.found.length===0"
+                class="text-center text-sm font-medium text-green-700/60 py-10 italic">Cero resultados para este
+                conjunto.</div>
               <div *ngFor="let result of massiveSearchResults.found"
-                   class="text-sm mb-2 p-2 rounded"
-                   [class.text-green-700]="!result.isDuplicate"
-                   [class.text-red-700]="result.isDuplicate"
-                   [class.bg-red-50]="result.isDuplicate"
-                   [class.border-l-4]="result.isDuplicate"
-                   [class.border-red-500]="result.isDuplicate">
-                <div class="font-mono font-bold">{{ result.imei }}</div>
-                <div class="mt-1 flex flex-wrap gap-2">
-                  <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-semibold">
-                    ID: {{ result.invoiceId }}
-                  </span>
-                  <span *ngIf="result.itemName" class="px-2 py-1 bg-purple-100 text-purple-800 rounded text-xs font-semibold">
-                    {{ result.itemName }}
-                  </span>
-                  <span *ngIf="selectedStore === 'todas' && result.storeName" class="px-2 py-1 bg-orange-100 text-orange-800 rounded text-xs font-semibold uppercase">
-                    {{ result.storeName }}
-                  </span>
+                class="text-sm p-3.5 rounded-xl border bg-surface-50 transition-colors shadow-sm"
+                [class.border-green-200]="!result.isDuplicate" [class.border-red-300]="result.isDuplicate"
+                [class.bg-red-50]="result.isDuplicate">
+
+                <div class="font-mono font-bold text-surface-900 text-[13px]" [class.text-red-900]="result.isDuplicate">
+                  {{ result.imei }}</div>
+                <div class="mt-2.5 flex flex-wrap gap-2 text-[11px] font-bold">
+                  <span
+                    class="px-2 py-1 bg-white text-surface-700 rounded-md border border-surface-200 shadow-sm flex items-center gap-1">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3 text-surface-400">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 8.25h15m-16.5 7.5h15" />
+                </svg>
+                {{ result.invoiceId }}</span>
+                  <span *ngIf="result.itemName"
+                    class="px-2 py-1 bg-primary-50 text-primary-800 rounded-md border border-primary-200 truncate max-w-[150px] shadow-sm">{{
+                    result.itemName }}</span>
+                  <span *ngIf="selectedStore === 'todas' && result.storeName"
+                    class="px-2 py-1 bg-amber-50 text-amber-800 rounded-md border border-amber-200 uppercase shadow-sm flex items-center gap-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-3 h-3">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18" />
+                    </svg>
+                    {{ result.storeName }}</span>
+                  <span *ngIf="result.isDuplicate"
+                    class="text-red-600 bg-red-100 px-2 py-1 rounded-md border border-red-200 shadow-sm flex items-center gap-1"><i
+                      class="pi pi-exclamation-triangle text-[9px]"></i> Duplicado</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <!-- IMEIs No Encontrados -->
-          <div class="bg-red-50 border border-red-200 rounded-lg p-4">
-            <h5 class="text-red-800 font-semibold mb-2">
-              ❌ No encontrados ({{ massiveSearchResults.notFound.length }})
+          <!-- NO ENCONTRADOS -->
+          <div
+            class="bg-white border-2 border-red-500/10 rounded-2xl p-5 flex flex-col shadow-sm relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-24 h-24 bg-red-500/5 rounded-full -translate-y-1/2 translate-x-1/2">
+            </div>
+            <h5 class="text-red-800 font-extrabold mb-4 flex items-center justify-between text-lg relative z-10">
+              <span class="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5 text-red-400">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="m9.75 9.75 4.5 4.5m0-4.5-4.5 4.5M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                </svg>
+                Huerfanos</span>
+              <span class="bg-red-50 text-red-700 border border-red-200 px-3 py-1 rounded-full text-xs shadow-sm">{{
+                massiveSearchResults.notFound.length }}</span>
             </h5>
-            <div class="max-h-64 overflow-y-auto">
-              <div *ngFor="let imei of massiveSearchResults.notFound" class="text-red-700 text-sm font-mono mb-1 p-1">
+            <div class="flex-1 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar relative z-10 space-y-2">
+              <div *ngIf="massiveSearchResults.notFound.length===0"
+                class="text-center text-sm font-medium text-red-700/60 py-10 italic">Nada huérfano, todo fue mapeado.
+              </div>
+              <div *ngFor="let imei of massiveSearchResults.notFound"
+                class="text-red-800 text-[13px] font-mono bg-red-50/50 border border-red-100 p-2.5 rounded-lg font-bold">
                 {{ imei }}
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Resumen -->
-        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-          <p class="text-sm text-gray-700">
-            <strong>Total buscados:</strong> {{ massiveSearchResults.totalSearched }} |
-            <strong>Facturas coincidentes:</strong> {{ massiveSearchResults.matchingInvoices.length }}
-          </p>
-        </div>
-
-        <!-- Botones de acción para resultados -->
-        <div class="flex gap-2 justify-end">
-          <button
-            (click)="applyMassiveSearchFilter()"
-            [disabled]="massiveSearchResults.matchingInvoices.length === 0"
-            class="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            ✅ Aplicar Filtro
+        <div class="flex justify-end gap-3 mt-4">
+          <button (click)="clearMassiveSearchFilter()"
+            class="px-5 py-2.5 rounded-xl text-sm font-bold border-2 border-surface-200 text-surface-600 hover:bg-surface-50 transition-all flex items-center gap-2 select-none outline-none">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.344 12.142m-4.762 0L9.61 9m4.814-2.815-.805-2.403c-.19-.572-.732-.958-1.332-.958H10.51c-.6 0-1.142.386-1.332.958L8.37 6.185m7.483 0L13.982 7.442a.45.45 0 0 1-.456.408H10.474a.45.45 0 0 1-.456-.408L8.12 6.185m7.483 0H8.12m11.104 1.354c.45.044.899.088 1.348.133M19.23 7.248C18.156 7.16 17.072 7.1 15.98 7.07M19.23 7.248c-.075-2.017-.307-4.013-.689-5.976M19.23 7.248l-1.243 8.903c-.225 1.617-1.604 2.825-3.235 2.825H9.248c-1.63 0-3.01-1.208-3.235-2.825l-1.243-8.903m12.458 0c-1.092-.027-2.176-.088-3.25-.184M19.23 7.248a47.581 47.581 0 0 0-1.348-.133m-14.184.133c.45-.044.899-.088 1.348-.133M3.5 7.248c1.074-.088 2.158-.148 3.25-.175m-3.25.175c.075-2.017.307-4.013.689-5.976m0 0L5.185 16.15c.225 1.617 1.604 2.825 3.235 2.825h5.16c1.63 0 3.01-1.208 3.235-2.825l1.243-8.903m-12.458 0c1.092-.027 2.176-.088 3.25-.184M3.5 7.248a47.581 47.581 0 0 1 1.348-.133" />
+            </svg>
+            Limpiar Pizarra
           </button>
-
-          <button
-            (click)="clearMassiveSearchFilter()"
-            class="px-6 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded-lg transition"
-          >
-            🧹 Limpiar y Cerrar
+          <button (click)="applyMassiveSearchFilter()" [disabled]="massiveSearchResults.matchingInvoices.length === 0"
+            class="px-6 py-2.5 rounded-xl text-sm font-bold bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary-100 transition-all flex items-center gap-2 select-none outline-none border-none">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+            </svg>
+            Aplicar Fitros a la Tabla
           </button>
         </div>
       </div>
@@ -335,97 +505,141 @@
   </div>
 </div>
 
-<!-- Modal de Exportación de Datos -->
-<div
-  *ngIf="showExportModal"
-  class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
-  (click)="closeExportModal()"
->
+<!-- MODAL: EXPORTAR DATOS -->
+<div *ngIf="showExportModal"
+  class="fixed inset-0 bg-surface-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in"
+  (click)="closeExportModal()">
   <div
-    class="bg-white rounded-lg shadow-xl w-11/12 max-w-2xl"
-    (click)="$event.stopPropagation()"
-  >
-    <!-- Header -->
-    <div class="bg-purple-600 text-white px-6 py-4 rounded-t-lg flex justify-between items-center">
-      <h2 class="text-xl font-bold">📊 Exportar Datos</h2>
-      <button
-        (click)="closeExportModal()"
-        class="text-white hover:text-gray-200 text-2xl font-bold"
-      >
-        ×
+    class="bg-white text-surface-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden transform transition-all border border-surface-200"
+    (click)="$event.stopPropagation()">
+
+    <div class="px-7 py-5 border-b border-surface-200 flex justify-between items-center bg-white">
+      <h2 class="text-xl font-extrabold text-surface-900 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
+          <i class="pi pi-download text-lg"></i>
+        </div>
+        Exportar Lote Histórico
+      </h2>
+      <button (click)="closeExportModal()"
+        class="w-8 h-8 rounded-full bg-surface-100 hover:bg-surface-200 flex items-center justify-center text-surface-500 hover:text-surface-700 transition-colors">
+        <i class="pi pi-times text-sm font-bold"></i>
       </button>
     </div>
 
-    <!-- Content -->
-    <div class="p-6 space-y-6">
-      <!-- Información del tipo de facturas -->
-      <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-        <h4 class="text-purple-800 font-semibold mb-2">📋 Datos a Exportar:</h4>
-        <p class="text-purple-700 text-sm">
-          <strong>Tienda:</strong> {{ getSelectedStoreName() }}
-        </p>
-        <p class="text-purple-700 text-sm">
-          <strong>Tipo:</strong> {{ getSelectedTypeName() }}
-        </p>
-        <p class="text-purple-700 text-sm mt-2">
-          Total de facturas disponibles: <strong>{{ allInvoices.length }}</strong>
-        </p>
-      </div>
-
-      <!-- Selector de Rango de Fechas -->
-      <div class="space-y-4">
-        <h3 class="text-lg font-semibold text-gray-800">📅 Seleccionar Rango de Fechas</h3>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <!-- Fecha Inicio -->
-          <div class="flex flex-col">
-            <label class="text-sm font-medium text-gray-700 mb-2">Fecha Inicio:</label>
-            <input
-              type="date"
-              [(ngModel)]="exportStartDate"
-              class="border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-purple-500 focus:outline-none"
-            />
-          </div>
-
-          <!-- Fecha Fin -->
-          <div class="flex flex-col">
-            <label class="text-sm font-medium text-gray-700 mb-2">Fecha Fin:</label>
-            <input
-              type="date"
-              [(ngModel)]="exportEndDate"
-              class="border-2 border-gray-300 rounded-lg px-3 py-2 focus:border-purple-500 focus:outline-none"
-            />
+    <div class="p-7">
+      <div
+        class="bg-indigo-50/50 border border-indigo-200/60 rounded-xl p-5 shadow-sm mb-6 text-sm relative overflow-hidden">
+        <div class="absolute -right-4 -bottom-4 opacity-10"><i class="pi pi-server text-[100px] text-indigo-500"></i>
+        </div>
+        <div class="grid grid-cols-2 gap-4 text-surface-700 relative z-10">
+          <div><b class="text-xs uppercase text-surface-500 block mb-1">Target Tienda</b> <span
+              class="text-surface-900 font-bold bg-white px-2 py-1 rounded border border-surface-200 text-xs">{{
+              getSelectedStoreName() }}</span></div>
+          <div><b class="text-xs uppercase text-surface-500 block mb-1">Target Entidad</b> <span
+              class="text-surface-900 font-bold bg-white px-2 py-1 rounded border border-surface-200 text-xs">{{
+              getSelectedTypeName() }}</span></div>
+          <div class="col-span-2 pt-3 border-t border-indigo-200/50 mt-1 flex items-center gap-2">
+            <i class="pi pi-database text-indigo-600"></i>
+            <span class="text-indigo-900 font-medium">Volumen garantizado sobre <b
+                class="font-extrabold bg-indigo-100 px-1.5 py-0.5 rounded">{{ allInvoices.length }}</b> registros</span>
           </div>
         </div>
       </div>
 
-      <!-- Información de formato -->
-      <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-        <h3 class="text-lg font-semibold text-purple-800">📁 Formato de Exportación</h3>
-        <p class="text-purple-700 text-sm mt-2">
-          📊 Los datos se exportarán en formato <strong>Excel (.xlsx)</strong> con filtros automáticos aplicados en los encabezados.
-        </p>
+      <div class="space-y-5 mb-8">
+        <div>
+          <label class="block text-xs font-bold text-surface-600 mb-2 uppercase tracking-wide ml-1">Corte
+            Inicial:</label>
+          <input type="date" [(ngModel)]="exportStartDate"
+            class="w-full border-2 border-surface-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-sans text-surface-800 font-semibold shadow-sm">
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-surface-600 mb-2 uppercase tracking-wide ml-1">Corte Final:</label>
+          <input type="date" [(ngModel)]="exportEndDate"
+            class="w-full border-2 border-surface-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-sans text-surface-800 font-semibold shadow-sm">
+        </div>
       </div>
 
-      <!-- Botones de acción -->
-      <div class="flex gap-3 justify-end pt-4 border-t border-gray-200">
-        <button
-          (click)="closeExportModal()"
-          [disabled]="exportLoading"
-          class="px-6 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Cancelar
+      <div class="flex justify-end gap-3 mt-4 pt-4 border-t border-surface-100">
+        <button (click)="closeExportModal()"
+          class="px-5 py-2.5 rounded-xl text-sm font-bold text-surface-600 hover:bg-surface-100 transition-all select-none outline-none">
+          Abortar
         </button>
-
-        <button
-          (click)="performExport()"
-          [disabled]="exportLoading || !exportStartDate || !exportEndDate"
-          class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
-        >
-          <span *ngIf="exportLoading">⏳ Exportando...</span>
-          <span *ngIf="!exportLoading">⬇️ Exportar</span>
+        <button (click)="performExport()" [disabled]="exportLoading || !exportStartDate || !exportEndDate"
+          class="px-6 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-indigo-200 transition-all flex items-center gap-2 select-none outline-none border-none">
+          <svg *ngIf="!exportLoading" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          <svg *ngIf="exportLoading" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          {{ exportLoading ? 'Empaquetando Binario...' : 'Construir Excel' }}
         </button>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .animate-fade-in {
+    animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  :host ::ng-deep .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  :host ::ng-deep .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  :host ::ng-deep .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+  }
+
+  :host ::ng-deep .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+  }
+
+  /* Paginador limpio para la tabla principal */
+  :host ::ng-deep .custom-table-wrapper .p-paginator {
+    background-color: transparent;
+    border: none;
+    border-top: 1px solid #e2e8f0;
+    padding: 0.75rem 1rem;
+  }
+
+  /* P-tag text fixes */
+  :host ::ng-deep p-tag .p-tag {
+    font-family: inherit;
+  }
+
+  @media (max-width: 640px) {
+
+    :host ::ng-deep .custom-table-wrapper .p-paginator .p-paginator-pages,
+    :host ::ng-deep .custom-table-wrapper .p-paginator .p-dropdown {
+      display: none !important;
+    }
+
+    :host ::ng-deep .custom-table-wrapper .p-paginator .p-paginator-current {
+      margin: 0 auto;
+      width: 100%;
+      text-align: center;
+      font-size: 0.8rem;
+    }
+  }
+</style>

@@ -1,0 +1,29 @@
+:host {
+    display: block;
+}
+
+.p-inputtext {
+    font-family: inherit;
+}
+
+/* Glassmorphism subtle polish */
+.backdrop-blur-xl {
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+}
+
+/* Smooth input focus */
+input:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 15px -3px rgba(20, 184, 166, 0.1);
+}
+
+/* Hover effects for buttons */
+button:not(:disabled):hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 20px -5px rgba(20, 184, 166, 0.4) !important;
+}
+
+button:not(:disabled):active {
+    transform: translateY(0);
+}

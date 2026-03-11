@@ -1,0 +1,130 @@
+<div class="flex flex-col bg-surface-50 min-h-full w-full">
+    <!-- Sticky Header Bar -->
+    <header class="h-16 bg-white border-b border-surface-200 flex items-center justify-between px-6 shrink-0 shadow-sm sticky top-0 z-30">
+        <div>
+            <h1 class="text-xl font-bold text-surface-900 leading-none">Gestión de Usuarios</h1>
+            <p class="text-surface-500 text-sm mt-0.5">Administra los accesos y roles de la plataforma</p>
+        </div>
+        
+        <div class="flex items-center gap-4">
+            <app-profile-menu class="hidden md:block"></app-profile-menu>
+        </div>
+    </header>
+
+    <div class="p-6 max-w-7xl mx-auto space-y-4 animate-fade-in w-full">
+        <!-- Action Bar (Table Header style) -->
+        <div class="bg-white border border-surface-200 rounded-t-2xl p-4 flex items-center justify-between shadow-sm">
+            <div class="flex items-center gap-2">
+                <span class="text-sm font-black italic text-surface-900 tracking-tight">
+                    {{users().length}} Usuarios registrados
+                </span>
+            </div>
+            <button (click)="openNew()"
+                    class="flex items-center gap-2 px-4 py-2 bg-white border border-primary-200 text-primary-600 hover:bg-primary-50 rounded-xl font-bold text-xs uppercase tracking-widest transition-all shadow-sm active:scale-95">
+                <i class="pi pi-plus text-xs"></i>
+                <span>Nuevo Usuario</span>
+            </button>
+        </div>
+
+        <!-- Table Section -->
+        <div class="bg-white border border-t-0 border-surface-200 rounded-b-2xl overflow-hidden shadow-sm">
+        <p-table [value]="users()" 
+                 [loading]="loading()" 
+                 [rows]="10" 
+                 [paginator]="true" 
+                 [responsiveLayout]="'scroll'"
+                 styleClass="p-datatable-sm custom-table">
+            <ng-template pTemplate="header">
+                <tr>
+                    <th class="!bg-surface-50 !py-4">Usuario</th>
+                    <th class="!bg-surface-50 !py-4">Correo</th>
+                    <th class="!bg-surface-50 !py-4">Rol</th>
+                    <th class="!bg-surface-50 !py-4">Estado</th>
+                    <th class="!bg-surface-50 !py-4 text-center">Acciones</th>
+                </tr>
+            </ng-template>
+            <ng-template pTemplate="body" let-user>
+                <tr class="hover:bg-surface-50/50 transition-colors">
+                    <td class="!py-4 font-bold text-surface-900">{{user.username}}</td>
+                    <td class="!py-4 text-surface-600">{{user.email || '--'}}</td>
+                    <td class="!py-4">
+                        <p-tag [value]="user.role.toUpperCase()" [severity]="getRoleSeverity(user.role)" class="!rounded-md"></p-tag>
+                    </td>
+                    <td class="!py-4">
+                        <p-tag [value]="user.status === 'active' ? 'Activo' : 'Inactivo'" [severity]="getStatusSeverity(user.status)" rounded="true"></p-tag>
+                    </td>
+                    <td class="!py-4 text-center">
+                        <button pButton 
+                                icon="pi pi-pencil" 
+                                (click)="editUser(user)" 
+                                class="p-button-text p-button-rounded p-button-primary hover:!bg-primary-50">
+                        </button>
+                    </td>
+                </tr>
+            </ng-template>
+            <ng-template pTemplate="emptymessage">
+                <tr>
+                    <td colspan="5" class="text-center !py-10 text-surface-400">
+                        <i class="pi pi-users text-4xl mb-2"></i>
+                        <p>No se encontraron usuarios</p>
+                    </td>
+                </tr>
+            </ng-template>
+        </p-table>
+    </div>
+</div>
+</div>
+
+<!-- Dialog para Crear/Editar -->
+<p-dialog [(visible)]="displayDialog" 
+          [header]="isEdit() ? 'Editar Usuario' : 'Nuevo Usuario'" 
+          [modal]="true" 
+          [draggable]="false"
+          [resizable]="false"
+          [breakpoints]="{'960px': '75vw', '640px': '90vw'}"
+          styleClass="custom-dialog">
+    
+    <form [formGroup]="userForm" (ngSubmit)="saveUser()" class="flex flex-col gap-6 pt-4">
+        <!-- Usuario -->
+        <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold text-surface-700 ml-1">Nombre de Usuario</label>
+            <input pInputText formControlName="username" class="!rounded-xl !bg-surface-50/50" placeholder="ej. jdoe" />
+        </div>
+
+        <!-- Contraseña -->
+        <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold text-surface-700 ml-1">
+                Contraseña {{isEdit() ? '(dejar vacío para no cambiar)' : ''}}
+            </label>
+            <input pInputText type="password" formControlName="password" class="!rounded-xl !bg-surface-50/50" placeholder="••••••" />
+        </div>
+
+        <!-- Email -->
+        <div class="flex flex-col gap-2">
+            <label class="text-sm font-semibold text-surface-700 ml-1">Correo Electrónico</label>
+            <input pInputText formControlName="email" class="!rounded-xl !bg-surface-50/50" placeholder="usuario@ejemplo.com" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <!-- Rol -->
+            <div class="flex flex-col gap-2">
+                <label class="text-sm font-semibold text-surface-700 ml-1">Rol</label>
+                <p-dropdown [options]="roles" formControlName="role" styleClass="w-full !rounded-xl !bg-surface-50/50"></p-dropdown>
+            </div>
+
+            <!-- Estado -->
+            <div class="flex flex-col gap-2">
+                <label class="text-sm font-semibold text-surface-700 ml-1">Estado</label>
+                <p-dropdown [options]="statuses" formControlName="status" styleClass="w-full !rounded-xl !bg-surface-50/50"></p-dropdown>
+            </div>
+        </div>
+
+        <!-- Footer del Dialog -->
+        <div class="flex justify-end gap-3 mt-6">
+            <button pButton type="button" label="Cancelar" icon="pi pi-times" (click)="displayDialog.set(false)" class="p-button-text p-button-secondary !rounded-xl"></button>
+            <button pButton type="submit" [label]="isEdit() ? 'Actualizar' : 'Crear Usuario'" icon="pi pi-check" [disabled]="userForm.invalid" class="!bg-primary-500 !border-none !rounded-xl !px-6"></button>
+        </div>
+    </form>
+</p-dialog>
+
+<p-toast></p-toast>

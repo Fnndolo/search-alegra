@@ -1,0 +1,85 @@
+<div class="min-h-screen flex items-center justify-center bg-gradient-to-br from-surface-50 to-surface-100 p-4">
+    <!-- Fondo decorativo abstracto -->
+    <div class="absolute inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute -top-[10%] -left-[10%] w-[40%] h-[40%] rounded-full bg-primary-100/50 blur-[120px]"></div>
+        <div class="absolute -bottom-[10%] -right-[10%] w-[40%] h-[40%] rounded-full bg-primary-200/30 blur-[120px]"></div>
+    </div>
+
+    <!-- Card de Login -->
+    <div class="w-full max-w-md z-10">
+        <div class="bg-white/80 backdrop-blur-xl border border-white/50 shadow-2xl rounded-3xl p-8 md:p-10 transition-all duration-300">
+            <!-- Header con Logo -->
+            <div class="flex flex-col items-center mb-8">
+                <div class="w-16 h-16 rounded-2xl bg-primary-500 flex items-center justify-center text-white text-3xl font-black mb-4 shadow-lg shadow-primary-500/30">
+                    S
+                </div>
+                <h1 class="text-3xl font-bold text-surface-900 tracking-tight">Smart Alegra</h1>
+                <p class="text-surface-500 text-sm mt-1">Inicia sesión para continuar</p>
+            </div>
+
+            <!-- Formulario -->
+            <form [formGroup]="loginForm" (ngSubmit)="onSubmit()" class="space-y-6">
+                <!-- Usuario -->
+                <div class="flex flex-col gap-2">
+                    <label for="username" class="text-sm font-semibold text-surface-700 ml-1">Usuario</label>
+                    <span class="p-input-icon-left w-full">
+                        <i class="pi pi-user z-20 text-surface-400"></i>
+                        <input 
+                            id="username"
+                            type="text" 
+                            pInputText 
+                            formControlName="username" 
+                            placeholder="Nombre de usuario" 
+                            class="w-full !rounded-xl !border-surface-200 !bg-white/50 focus:!border-primary-500 focus:!ring-2 focus:!ring-primary-500/20 transition-all py-3 pl-11"
+                            [class.ng-invalid]="loginForm.get('username')?.touched && loginForm.get('username')?.invalid"
+                        />
+                    </span>
+                </div>
+
+                <!-- Password -->
+                <div class="flex flex-col gap-2">
+                    <div class="flex justify-between items-center px-1">
+                        <label for="password" class="text-sm font-semibold text-surface-700">Contraseña</label>
+                    </div>
+                    <span class="p-input-icon-left w-full relative">
+                        <i class="pi pi-lock z-20 text-surface-400"></i>
+                        <input 
+                            id="password"
+                            [type]="showPassword() ? 'text' : 'password'" 
+                            pInputText 
+                            formControlName="password" 
+                            placeholder="••••••••" 
+                            class="w-full !rounded-xl !border-surface-200 !bg-white/50 focus:!border-primary-500 focus:!ring-2 focus:!ring-primary-500/20 transition-all py-3 pl-11"
+                            [class.ng-invalid]="loginForm.get('password')?.touched && loginForm.get('password')?.invalid"
+                        />
+                        <button 
+                            type="button"
+                            (click)="showPassword.set(!showPassword())"
+                            class="absolute right-4 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 focus:outline-none transition-colors z-20"
+                        >
+                            <i [class]="showPassword() ? 'pi pi-eye-slash' : 'pi pi-eye'"></i>
+                        </button>
+                    </span>
+                </div>
+
+                <!-- Botón de Acción -->
+                <button 
+                    pButton 
+                    type="submit" 
+                    [loading]="loading()" 
+                    label="Iniciar Sesión" 
+                    class="w-full !bg-primary-500 !border-none !rounded-xl !py-4 !text-lg !font-bold !shadow-xl !shadow-primary-500/20 hover:!bg-primary-600 active:!scale-[0.98] transition-all"
+                ></button>
+            </form>
+
+            <!-- Footer -->
+            <div class="mt-8 pt-6 border-t border-surface-100 text-center">
+                <p class="text-surface-400 text-xs font-medium">
+                    &copy; 2026 Smart Gadgets. Todos los derechos reservados.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p-toast position="top-center"></p-toast>

@@ -7,11 +7,21 @@ import { FormsModule } from '@angular/forms';
 import { HttpClientModule } from '@angular/common/http';
 import { InvoiceService } from '../../../core/http/invoice.service';
 import { SocketService } from '../../../core/services/socket.service';
-import { ButtonModule } from 'primeng/button';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
-import { Subscription } from 'rxjs';
+import { DropdownModule } from 'primeng/dropdown';
+import { TagModule } from 'primeng/tag';
+import { TooltipModule } from 'primeng/tooltip';
+import { ToastModule } from 'primeng/toast';
+import { DatePickerModule } from 'primeng/datepicker';
+import { InputNumberModule } from 'primeng/inputnumber';
+import { MultiSelectModule } from 'primeng/multiselect';
+import { MessageService } from 'primeng/api';
+import { Subscription, Subject } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import * as XLSX from 'xlsx';
+import { HighlightPipe } from '../../../core/pipes/highlight.pipe';
+import { ProfileMenuComponent } from '../../../layout/profile-menu/profile-menu.component';
 
 @Component({
   selector: 'app-invoices',
@@ -22,13 +32,20 @@ import * as XLSX from 'xlsx';
     InputTextModule,
     PaginatorModule,
     FormsModule,
-    HttpClientModule,
-    ButtonModule,
     IconFieldModule,
     InputIconModule,
-    InputTextModule
+    InputTextModule,
+    DropdownModule,
+    TagModule,
+    TooltipModule,
+    ToastModule,
+    DatePickerModule,
+    InputNumberModule,
+    MultiSelectModule,
+    HighlightPipe,
+    ProfileMenuComponent
   ],
-  providers: [InvoiceService, SocketService],
+  providers: [InvoiceService, SocketService, MessageService],
   templateUrl: './invoices.component.html',
   // styleUrls: ['./invoices.component.scss']
 })
@@ -43,8 +60,13 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   rows = 30;
   filterValue = '';
 
+  // Nueva propiedad para almacenar facturas de compra (para búsqueda de costos)
+  private purchaseInvoicesCache: any[] = [];
+
   // Propiedades para WebSocket
   private socketSubscriptions: Subscription[] = [];
+  private searchSubject = new Subject<string>();
+  private searchSubscription: Subscription | null = null;
   newInvoiceIds: string[] = []; // Para rastrear facturas nuevas y animarlas
   deletedInvoiceIds: string[] = []; // Para rastrear facturas eliminadas y animarlas
 
@@ -71,16 +93,29 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   massiveSearchResults: any = null;
   massiveSearchLoading = false;
 
+  // Nuevos filtros equivalentes a invoice-list
+  dateFrom: Date | null = null;
+  dateTo: Date | null = null;
+  selectedStatus: string | null = null;
+  statuses = [
+    { label: 'Todos los estados', value: null },
+    { label: 'Por cobrar', value: 'open' },
+    { label: 'Cobrada', value: 'closed' },
+    { label: 'Borrador', value: 'draft' },
+    { label: 'Anulada', value: 'void' }
+  ];
+
   // Propiedades para exportación de datos
-  showExportModal = false;
-  exportStartDate = '';
-  exportEndDate = '';
-  exportLoading = false;
+  showExportModal: boolean = false;
+  exportStartDate: string = '';
+  exportEndDate: string = '';
+  exportLoading: boolean = false;
 
   constructor(
     private invoiceService: InvoiceService,
     private socketService: SocketService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private messageService: MessageService
   ) {
   }
 
@@ -102,11 +137,22 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     if (this.selectedStore && this.selectedInvoiceType) {
       this.connectWebSocket();
     }
+
+    // Configurar debounce para búsqueda
+    this.searchSubscription = this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged()
+    ).subscribe(() => {
+      this.page = 0;
+      this.filterInvoicesLocal();
+    });
   }
 
   ngOnDestroy() {
-    // Desconectar WebSocket y limpiar suscripciones
-    this.disconnectWebSocket();
+    this.socketSubscriptions.forEach(sub => sub.unsubscribe());
+    if (this.searchSubscription) {
+      this.searchSubscription.unsubscribe();
+    }
   }
 
   connectWebSocket() {
@@ -144,11 +190,11 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     } else if (this.selectedInvoiceType === 'purchases') {
       // Eventos para facturas de COMPRA
       const createdSub = this.socketService.onBillCreated().subscribe({
-        next: (bill) => this.handleInvoiceCreated(bill)
+        next: (bill: any) => this.handleInvoiceCreated(bill)
       });
 
       const updatedSub = this.socketService.onBillUpdated().subscribe({
-        next: (bill) => this.handleInvoiceUpdated(bill)
+        next: (bill: any) => this.handleInvoiceUpdated(bill)
       });
 
       const deletedSub = this.socketService.onBillDeleted().subscribe({
@@ -174,6 +220,12 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   }
 
   handleInvoiceCreated(invoice: any) {
+    // Evitar duplicados por webhooks repetidos
+    const exists = this.allInvoices.some(inv => inv.id === invoice.id);
+    if (exists) {
+      return this.handleInvoiceUpdated(invoice);
+    }
+
     // Agregar la nueva factura al inicio del array
     this.allInvoices.unshift(invoice);
     this.totalRecords = this.allInvoices.length;
@@ -280,8 +332,8 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         this.totalRecords = this.allInvoices.length;
         this.loading = false;
 
-        // Aplicar filtro automáticamente si hay texto de búsqueda
-        if (this.filterValue && this.filterValue.trim() !== '') {
+        // Aplicar filtro automáticamente si hay filtros activos
+        if (this.hasActiveFilters) {
           this.filterInvoicesLocal();
         } else {
           this.invoices = this.allInvoices.slice(0, this.rows);
@@ -306,8 +358,8 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         this.totalRecords = this.allInvoices.length;
         this.loading = false;
 
-        // Aplicar filtro automáticamente si hay texto de búsqueda
-        if (this.filterValue && this.filterValue.trim() !== '') {
+        // Aplicar filtro automáticamente si hay filtros activos
+        if (this.hasActiveFilters) {
           this.filterInvoicesLocal();
         } else {
           this.invoices = this.allInvoices.slice(0, this.rows);
@@ -384,94 +436,97 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     this.loadInvoices();
   }
 
-  onFilterChange() {
-    this.page = 0;
-    this.filterInvoicesLocal();
+  onFilterChange(immediate: boolean = false) {
+    if (immediate) {
+      this.page = 0;
+      this.filterInvoicesLocal();
+    } else {
+      this.searchSubject.next(this.filterValue);
+    }
   }
 
   filterInvoicesLocal() {
+    if (!this.allInvoices) return;
+
     let filtered = this.allInvoices;
-    // Usar trim() para ignorar espacios al inicio y final
     const trimmedFilter = this.filterValue?.trim() || '';
+
+    // Filtros de Estado
+    if (this.selectedStatus) {
+      filtered = filtered.filter((inv) => inv.status === this.selectedStatus);
+    }
+
+    // Filtros de Fecha
+    if (this.dateFrom) {
+      const from = new Date(this.dateFrom);
+      from.setHours(0, 0, 0, 0);
+      filtered = filtered.filter((inv) => new Date(inv.date) >= from);
+    }
+    if (this.dateTo) {
+      const to = new Date(this.dateTo);
+      to.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((inv) => new Date(inv.date) <= to);
+    }
 
     if (trimmedFilter !== '') {
       const filterLower = trimmedFilter.toLowerCase();
 
       if (this.selectedInvoiceType === 'sales') {
-        // Filtro para facturas de venta (ID, Cliente, Cédula, Tienda, Item, Anotación, Descripción, Vendedor)
-        filtered = this.allInvoices.filter(
-          (inv) =>
-            // Buscar por ID
-            (inv.numberTemplate?.number &&
-              inv.numberTemplate.number.toString().toLowerCase().includes(filterLower)) ||
-            // Buscar por Cliente
-            (inv.client?.name &&
-              inv.client.name.toLowerCase().includes(filterLower)) ||
-            // Buscar por Cédula
-            (inv.client?.identification &&
-              inv.client.identification.toString().toLowerCase().includes(filterLower)) ||
-            // Buscar por Tienda (solo cuando selectedStore === 'todas')
-            (this.selectedStore === 'todas' && inv.tienda &&
-              inv.tienda.toLowerCase().includes(filterLower)) ||
-            // Buscar por Item (nombre)
-            (inv.items &&
-              inv.items.some(
-                (item: any) =>
-                  item.name &&
-                  item.name.toLowerCase().includes(filterLower)
-              )) ||
-            // Buscar por Anotación
-            (inv.anotation &&
-              inv.anotation.toLowerCase().includes(filterLower)) ||
-            // Buscar por Descripción de items
-            (inv.items &&
-              inv.items.some(
-                (item: any) =>
-                  item.description &&
-                  item.description.toLowerCase().includes(filterLower)
-              )) ||
-            // Buscar por Vendedor
-            (inv.seller?.name &&
-              inv.seller.name.toLowerCase().includes(filterLower))
+        filtered = filtered.filter(
+          (inv) => {
+            const id = inv.numberTemplate?.number?.toString().toLowerCase() || '';
+            const client = inv.client?.name?.toLowerCase() || '';
+            const identification = inv.client?.identification?.toString().toLowerCase() || '';
+            const shop = inv.tienda?.toLowerCase() || '';
+            const annotations = inv.anotation?.toLowerCase() || '';
+
+            if (id.includes(filterLower) || client.includes(filterLower) || identification.includes(filterLower) || shop.includes(filterLower) || annotations.includes(filterLower)) {
+              return true;
+            }
+
+            return inv.items?.some((item: any) =>
+              (item.name?.toLowerCase().includes(filterLower)) ||
+              (item.description?.toLowerCase().includes(filterLower))
+            );
+          }
         );
       } else {
-        // Filtro para facturas de compra (ID, Proveedor, Tienda, Items, Observaciones, Descripción)
-        filtered = this.allInvoices.filter(
-          (inv) =>
-            // Buscar por ID
-            (inv.numberTemplate?.number &&
-              inv.numberTemplate.number.toString().toLowerCase().includes(filterLower)) ||
-            // Buscar por Proveedor
-            (inv.provider?.name &&
-              inv.provider.name.toLowerCase().includes(filterLower)) ||
-            // Buscar por Tienda (solo cuando selectedStore === 'todas')
-            (this.selectedStore === 'todas' && inv.tienda &&
-              inv.tienda.toLowerCase().includes(filterLower)) ||
-            // Buscar por Items (nombre)
-            (inv.purchases?.items &&
-              inv.purchases.items.some(
-                (item: any) =>
-                  item.name &&
-                  item.name.toLowerCase().includes(filterLower)
-              )) ||
-            // Buscar por Anotación
-            (inv.anotation &&
-              inv.anotation.toLowerCase().includes(filterLower)) ||
-            // Buscar por Descripción de items
-            (inv.purchases?.items &&
-              inv.purchases.items.some(
-                (item: any) =>
-                  item.description &&
-                  item.description.toLowerCase().includes(filterLower)
-              ))
+        filtered = filtered.filter(
+          (inv) => {
+            const id = inv.numberTemplate?.number?.toString().toLowerCase() || '';
+            const provider = inv.provider?.name?.toLowerCase() || '';
+            const shop = inv.tienda?.toLowerCase() || '';
+            const annotations = inv.anotation?.toLowerCase() || '';
+
+            if (id.includes(filterLower) || provider.includes(filterLower) || shop.includes(filterLower) || annotations.includes(filterLower)) {
+              return true;
+            }
+
+            return inv.purchases?.items?.some((item: any) =>
+              (item.name?.toLowerCase().includes(filterLower)) ||
+              (item.description?.toLowerCase().includes(filterLower))
+            );
+          }
         );
       }
     }
+
     this.totalRecords = filtered.length;
-    this.invoices = filtered.slice(
-      this.page * this.rows,
-      (this.page + 1) * this.rows,
-    );
+    this.invoices = filtered.slice(this.page * this.rows, (this.page + 1) * this.rows);
+    this.cdr.detectChanges();
+  }
+
+  get hasActiveFilters(): boolean {
+    return !!(this.filterValue?.trim() || this.selectedStatus || this.dateFrom || this.dateTo);
+  }
+
+  clearFilters() {
+    this.filterValue = '';
+    this.selectedStatus = null;
+    this.dateFrom = null;
+    this.dateTo = null;
+    this.page = 0;
+    this.filterInvoicesLocal();
   }
 
   refreshInvoices() {
@@ -513,6 +568,73 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     this.page = event.first / event.rows;
     this.rows = event.rows;
     this.filterInvoicesLocal();
+  }
+
+  jumpToPage(event: any) {
+    const targetPage = parseInt(event.target.value, 10);
+    const maxPage = Math.ceil(this.totalRecords / this.rows);
+    if (!isNaN(targetPage) && targetPage > 0 && targetPage <= maxPage) {
+      this.page = targetPage - 1;
+      this.filterInvoicesLocal();
+    } else {
+      // Revertir valor si es inválido
+      event.target.value = this.page + 1;
+    }
+  }
+
+  goToPage(p: number) {
+    this.page = p;
+    this.filterInvoicesLocal();
+  }
+
+  syncMissingPayments() {
+    if (!this.selectedStore || this.selectedInvoiceType !== 'sales') return;
+    this.loading = true;
+    this.messageService.add({ severity: 'info', summary: 'Sincronizando faltantes', detail: 'Descargando facturas recientes sin pagos...' });
+
+    this.invoiceService.syncMissingPayments(this.selectedStore).subscribe({
+      next: (res: any) => {
+        this.updating = false;
+        this.progress = res.progress;
+        this.allInvoices = res.data;
+        this.totalRecords = this.allInvoices.length;
+        this.loading = false;
+        
+        this.messageService.add({ severity: 'success', summary: 'Éxito', detail: 'Pagos faltantes recuperados con éxito' });
+
+        if (this.filterValue && this.filterValue.trim() !== '') {
+          this.filterInvoicesLocal();
+        } else {
+          this.invoices = this.allInvoices.slice(0, this.rows);
+        }
+      },
+      error: (err: any) => {
+        this.loading = false;
+        this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo sincronizar los pagos faltantes' });
+      }
+    });
+  }
+
+  get totalPages(): number {
+    return Math.ceil(this.totalRecords / this.rows) || 1;
+  }
+
+  get visiblePages(): number[] {
+    const total = this.totalPages;
+    const current = this.page + 1;
+    const pages = [];
+
+    let start = Math.max(1, current - 2);
+    let end = Math.min(total, start + 4);
+
+    if (end - start < 4) {
+      start = Math.max(1, end - 4);
+    }
+
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
   }
 
   goToAlegra(id: string) {
@@ -719,7 +841,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   }
 
   applyMassiveSearchFilter() {
-    if (this.massiveSearchResults?.matchingInvoices) {
+    if (this.massiveSearchResults && this.massiveSearchResults.matchingInvoices) {
       this.invoices = this.massiveSearchResults.matchingInvoices.slice(0, this.rows);
       this.totalRecords = this.massiveSearchResults.matchingInvoices.length;
       this.page = 0;
@@ -805,33 +927,55 @@ export class InvoicesComponent implements OnInit, OnDestroy {
 
     this.exportLoading = true;
 
+    if (this.selectedInvoiceType === 'sales') {
+      // Buscar compras en TODAS las tiendas para encontrar el costo, sin importar dónde se compró
+      this.invoiceService.getAllPurchaseInvoices('todas').subscribe({
+        next: (res) => {
+          this.purchaseInvoicesCache = res.data || [];
+          this.continueExport(startDate, endDate);
+        },
+        error: (error) => {
+          console.error('Error cargando facturas de compra:', error);
+          this.purchaseInvoicesCache = [];
+          this.continueExport(startDate, endDate);
+        }
+      });
+    } else {
+      this.continueExport(startDate, endDate);
+    }
+  }
+  private continueExport(startDate: Date, endDate: Date) {
     // Filtrar facturas por rango de fechas
     let filteredInvoices = this.allInvoices.filter(invoice => {
       const invoiceDate = new Date(invoice.date);
       return invoiceDate >= startDate && invoiceDate <= endDate;
     });
 
-    // Si son facturas de venta, excluir las anuladas
-    if (this.selectedInvoiceType === 'sales') {
-      filteredInvoices = filteredInvoices.filter(invoice => invoice.status !== 'void');
-    }
-
-    if (filteredInvoices.length === 0) {
-      alert('No se encontraron facturas en el rango de fechas seleccionado');
-      this.exportLoading = false;
-      return;
-    }
+    // Calcular el número máximo de bancos distintos usados en una sola factura dentro de esta selección
+    let maxBanks = 1;
+    filteredInvoices.forEach(inv => {
+      let uniqueBanksCount = 0;
+      if (inv.paymentBankAccounts && inv.paymentBankAccounts.length > 0) {
+        const uniqueBanks = new Set(inv.paymentBankAccounts.map((pb: any) => pb.bankName || 'Desconocido'));
+        uniqueBanksCount = uniqueBanks.size;
+      } else if (inv.payments && inv.payments.length > 0) {
+        uniqueBanksCount = 1; // Fallback counts as 1 bank
+      }
+      if (uniqueBanksCount > maxBanks) {
+        maxBanks = uniqueBanksCount;
+      }
+    });
 
     // Exportar en formato Excel
-    this.exportToExcel(filteredInvoices);
+    this.exportToExcel(filteredInvoices, maxBanks);
 
     this.exportLoading = false;
     this.closeExportModal();
   }
 
-  exportToExcel(data: any[]) {
+  exportToExcel(data: any[], maxBanks: number) {
     // Preparar datos para exportación
-    const exportData = this.prepareExportData(data);
+    const exportData = this.prepareExportData(data, maxBanks);
 
     // Crear hoja de trabajo
     const worksheet = XLSX.utils.json_to_sheet(exportData);
@@ -855,21 +999,38 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       worksheet['!cols'] = colWidths;
     } else {
       // Para facturas de venta con formato de filas
-      const colWidths = [
+      const colWidths: any[] = [
         { wch: 12 },  // Fecha
         { wch: 15 },  // Número Factura
+        { wch: 15 },  // Tienda Original
+        { wch: 15 },  // Bodega
+        { wch: 20 },  // Centro de Costo
         { wch: 30 },  // Cliente
         { wch: 18 },  // Identificación Cliente
+        { wch: 30 },  // Correo Cliente
+        { wch: 20 },  // Teléfono Cliente
+        { wch: 40 },  // Dirección Cliente
         { wch: 40 },  // Item
         { wch: 10 },  // Cantidad
+        { wch: 15 },  // Precio Und
+        { wch: 15 },  // Costo Und
         { wch: 50 },  // Descripción Item
         { wch: 30 },  // Anotación
-        { wch: 25 },  // Método de Pago
+      ];
+
+      for (let i = 1; i <= maxBanks; i++) {
+        colWidths.push({ wch: 20 }); // Banco X
+        colWidths.push({ wch: 15 }); // Monto Banco X
+      }
+
+      colWidths.push(
         { wch: 20 },  // Vendedor
         { wch: 12 },  // Estado
+        { wch: 15 },  // Impuesto
         { wch: 15 },  // Total
-        { wch: 25 }   // Consecutivo interno (ALEGRA)
-      ];
+        { wch: 25 },  // Consecutivo interno (ALEGRA)
+      );
+
       worksheet['!cols'] = colWidths;
     }
 
@@ -884,7 +1045,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     XLSX.writeFile(workbook, fileName);
   }
 
-  prepareExportData(invoices: any[]): any[] {
+  prepareExportData(invoices: any[], maxBanks: number): any[] {
     // Función auxiliar para agrupar items por nombre
     const groupItems = (items: any[]) => {
       if (!items || items.length === 0) return [];
@@ -909,6 +1070,74 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       return Array.from(grouped.values());
     };
 
+    // Función para extraer IMEIs/seriales de un texto
+    const extractIdentifiers = (text: string): string[] => {
+      if (!text) return [];
+
+      const identifiers: string[] = [];
+      const cleanText = text.toUpperCase();
+
+      // 1. Buscar IMEIs de 15 o 16 dígitos
+      const imeiRegex = /\b\d{15,16}\b/g;
+      let match;
+      while ((match = imeiRegex.exec(cleanText)) !== null) {
+        identifiers.push(match[0].substring(0, 15));
+      }
+
+      // 2. Buscar patrones con prefijos comunes (IMEI, Serial, S/N, etc.)
+      // Permite letras, números, guiones y puntos en el identificador
+      const prefixedRegex = /(?:IMEI|CELULAR|EQUIPO|S\/N|SN|SERIAL|SERIE|SL|S\.N|S\/L)\s*:?\s*([A-Z0-9\.\-_]{6,30})/gi;
+      while ((match = prefixedRegex.exec(cleanText)) !== null) {
+        const id = match[1].trim();
+        if (id) identifiers.push(id.toUpperCase());
+      }
+
+      // 3. Buscar seriales alfanuméricos sospechosos (8+ caracteres con letras y números)
+      const genericSerialRegex = /\b([A-Z0-9\-_]{8,25})\b/gi;
+      while ((match = genericSerialRegex.exec(cleanText)) !== null) {
+        const serial = match[1].toUpperCase();
+        // Evitar falsos positivos: debe tener letras Y números, o ser muy largo
+        const hasLetter = /[A-Z]/.test(serial);
+        const hasNumber = /[0-9]/.test(serial);
+        if ((hasLetter && hasNumber) || serial.length > 14) {
+          identifiers.push(serial);
+        }
+      }
+
+      return [...new Set(identifiers)]; // Eliminar duplicados
+    };
+
+    // Función para buscar el costo de un identificador en facturas de compra
+    const findCostInPurchases = (identifier: string): number => {
+      if (this.selectedInvoiceType === 'purchases' || !identifier) return 0;
+      if (!this.purchaseInvoicesCache || this.purchaseInvoicesCache.length === 0) return 0;
+
+      const idUpper = identifier.toUpperCase();
+
+      for (const purchase of this.purchaseInvoicesCache) {
+        // Soporte para múltiples estructuras de items de compra
+        const rawItems = purchase.purchases?.items || purchase.items || [];
+        
+        for (const item of rawItems) {
+          const name = (item.name || '').toUpperCase();
+          const description = (item.description || '').toUpperCase();
+          const observations = (item.observations || '').toUpperCase();
+          const anotation = (purchase.anotation || '').toUpperCase();
+
+          // Buscar coincidencia exacta o por subcadena del identificador
+          if (description.includes(idUpper) || 
+              observations.includes(idUpper) || 
+              anotation.includes(idUpper) ||
+              name.includes(idUpper)) {
+            
+            // Retornar el precio de compra del item
+            return item.price || 0;
+          }
+        }
+      }
+      return 0;
+    };
+
     if (this.selectedInvoiceType === 'sales') {
       // Datos completos para facturas de venta - FORMATO CON UNA FILA POR ITEM
       const exportRows: any[] = [];
@@ -917,41 +1146,103 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         const items = inv.items || [];
         const groupedItems = groupItems(items);
 
-        // Si no hay items, crear una fila con los datos de la factura sin items
-        if (groupedItems.length === 0) {
-          exportRows.push({
+        // Map Store identifiers
+        const storeKey = inv.storeKey || this.selectedStore;
+        let bodega = '';
+        let centroCosto = '';
+        switch (storeKey?.toLowerCase()) {
+          case 'pasto': bodega = 'PASTO'; centroCosto = 'PRINCIPAL PASTO'; break;
+          case 'medellin': bodega = 'MEDELLIN'; centroCosto = 'SEDE MEDELLIN'; break;
+          case 'pereira': bodega = 'PEREIRA'; centroCosto = 'SEDE PEREIRA'; break;
+          case 'armenia': bodega = 'ARMENIA'; centroCosto = 'SEDE ARMENIA'; break;
+        }
+
+        const tiendaOriginal = inv.tienda || storeKey?.toUpperCase() || '';
+
+        // Extract Banks from our structured backend payload (Aggregating identical banks)
+        const bankInfo: any = {};
+        if (inv.paymentBankAccounts && inv.paymentBankAccounts.length > 0) {
+          const aggregatedBanks = new Map<string, number>();
+          inv.paymentBankAccounts.forEach((pb: any) => {
+            const name = pb.bankName || 'Desconocido';
+            const amount = pb.amount || 0;
+            aggregatedBanks.set(name, (aggregatedBanks.get(name) || 0) + amount);
+          });
+
+          let index = 0;
+          aggregatedBanks.forEach((amount, bankName) => {
+            if (index < maxBanks) {
+              bankInfo[`Banco ${index + 1}`] = bankName;
+              bankInfo[`Monto Banco ${index + 1}`] = amount;
+              index++;
+            }
+          });
+        } else if (inv.payments && inv.payments.length > 0) {
+          // Fallback if structured 'paymentBankAccounts' is not available
+          const mainBank = inv.payments[0]?.bankAccount || 'ADDI MARKETPLACE';
+          bankInfo['Banco 1'] = mainBank;
+          bankInfo['Monto Banco 1'] = inv.total;
+        }
+
+        const createRow = (item: any | null, isFirstRow: boolean) => {
+          let cost = 0;
+
+          if (item) {
+            const identifiers = [
+              ...extractIdentifiers(item.description || ''),
+              ...extractIdentifiers(inv.anotation || '')
+            ];
+
+            // Intentar con cada identificador encontrado hasta que uno devuelva un costo distinto de 0
+            for (const id of identifiers) {
+              const foundCost = findCostInPurchases(id);
+              if (foundCost > 0) {
+                cost = foundCost;
+                break;
+              }
+            }
+          }
+          const row: any = {
             'Fecha': inv.date,
             'Número Factura': inv.numberTemplate?.number || '',
+            'Consecutivo interno (ALEGRA)': inv.id,
+            'Tienda Original': isFirstRow ? tiendaOriginal : '',
+            'Bodega': isFirstRow ? bodega : '',
+            'Centro de Costo': isFirstRow ? centroCosto : '',
             'Cliente': inv.client?.name || '',
             'Identificación Cliente': inv.client?.identification || '',
-            'Item': '',
-            'Cantidad': '',
-            'Descripción Item': '',
+            'Correo Cliente': inv.client?.email || '',
+            'Teléfono Cliente': inv.client?.mobile || inv.client?.phonePrimary || inv.client?.phone1 || '',
+            'Dirección Cliente': inv.client?.address?.address || (typeof inv.client?.address === 'string' ? inv.client.address : ''),
+            'Ciudad Cliente': inv.client?.address?.city || '',
+            'Departamento Cliente': inv.client?.address?.department || '',
+            'Item': item ? item.name : '',
+            'Cantidad': item ? item.quantity : '',
+            'Precio Und': item ? item.price : '',
+            'Costo Und': item ? cost : '',
+            'Descripción Item': item ? item.description : '',
             'Anotación': inv.anotation || '',
-            'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
-            'Vendedor': inv.seller?.name || 'N/A',
-            'Estado': this.getStatusText(inv.status),
-            'Total': inv.total || 0,
-            'Consecutivo interno (ALEGRA)': inv.id || ''
-          });
+          };
+
+          for (let i = 1; i <= maxBanks; i++) {
+            row[`Banco ${i}`] = isFirstRow ? (bankInfo[`Banco ${i}`] || '') : '';
+            row[`Monto Banco ${i}`] = isFirstRow ? (bankInfo[`Monto Banco ${i}`] || '') : '';
+          }
+
+          row['Vendedor'] = inv.seller?.name || 'N/A';
+          row['Estado'] = this.getStatusText(inv.status);
+          row['Impuesto'] = ''; // Columna vacía para uso futuro
+          row['Total'] = inv.total || 0;
+          row['Consecutivo interno (ALEGRA)'] = inv.id || '';
+
+          return row;
+        };
+
+        if (groupedItems.length === 0) {
+          exportRows.push(createRow(null, true));
         } else {
-          // Crear una fila por cada item
-          groupedItems.forEach(item => {
-            exportRows.push({
-              'Fecha': inv.date,
-              'Número Factura': inv.numberTemplate?.number || '',
-              'Cliente': inv.client?.name || '',
-              'Identificación Cliente': inv.client?.identification || '',
-              'Item': item.name,
-              'Cantidad': item.quantity,
-              'Descripción Item': item.description,
-              'Anotación': inv.anotation || '',
-              'Método de Pago': inv.payments?.[0]?.bankAccount || 'ADDI MARKETPLACE',
-              'Vendedor': inv.seller?.name || 'N/A',
-              'Estado': this.getStatusText(inv.status),
-              'Total': inv.total || 0,
-              'Consecutivo interno (ALEGRA)': inv.id || ''
-            });
+          groupedItems.forEach((item, index) => {
+            exportRows.push(createRow(item, index === 0));
           });
         }
       });
