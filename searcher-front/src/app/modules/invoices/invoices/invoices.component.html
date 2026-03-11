@@ -16,102 +16,96 @@
   <div class="flex-1 flex flex-col p-4 md:p-6 w-full max-w-full relative">
     <!-- Top Filter Bar -->
     <div class="bg-surface-50 border border-surface-200 rounded-xl p-4 mb-4 shrink-0">
-      <!-- Row 1: Search +  Type + Status + Store -->
+      <!-- Row 1: Search + Type + Store + Status -->
       <div class="flex flex-col md:flex-row flex-wrap gap-3 md:items-center w-full">
         <!-- Global Search -->
-        <span class="relative w-full md:w-auto md:flex-grow-0">
+        <span class="relative w-full md:w-auto md:min-w-[300px] flex-auto">
           <i class="pi pi-search absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 z-10"></i>
           <input pInputText type="text" placeholder="Buscar ID, nombre, cliente..."
-            class="w-full md:w-64 pl-10 pr-4 py-2 rounded-lg border-surface-300 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+            class="w-full pl-10 pr-4 py-2 rounded-lg border-surface-300 shadow-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
             [(ngModel)]="filterValue" (input)="onFilterChange()" />
         </span>
 
         <!-- Tipo Documento -->
         <p-dropdown [options]="invoiceTypes" [(ngModel)]="selectedInvoiceType" placeholder="Tipo"
-          styleClass="w-full md:w-44" optionLabel="label" optionValue="value" (onChange)="onInvoiceTypeChange()">
+          styleClass="w-full md:w-auto md:min-w-[190px] flex-auto" optionLabel="label" optionValue="value" (onChange)="onInvoiceTypeChange()">
         </p-dropdown>
 
         <!-- Store Filter -->
-        <p-dropdown [options]="stores" [(ngModel)]="selectedStore" placeholder="Tienda" styleClass="w-full md:w-44"
+        <p-dropdown [options]="stores" [(ngModel)]="selectedStore" placeholder="Tienda" styleClass="w-full md:w-auto md:min-w-[220px] flex-auto"
           optionLabel="label" optionValue="value" [filter]="false" (onChange)="onStoreChange()">
         </p-dropdown>
 
         <!-- Status Filter -->
-        <p-dropdown [options]="statuses" [(ngModel)]="selectedStatus" placeholder="Estado" styleClass="w-full md:w-44"
+        <p-dropdown [options]="statuses" [(ngModel)]="selectedStatus" placeholder="Estado" styleClass="w-full md:w-auto md:min-w-[170px] flex-auto"
           optionLabel="label" optionValue="value" (onChange)="onFilterChange(true)">
         </p-dropdown>
-
-        <div class="flex flex-wrap gap-2 w-full md:w-auto mt-2 md:mt-0 ml-auto justify-end">
-          <!-- Masiva -->
-          <button (click)="openMassiveSearchModal()"
-            class="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-md transition-all select-none outline-none border-none">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
-            </svg>
-            <span class="text-xs uppercase">Masiva</span>
-          </button>
-          
-          <!-- Exportar -->
-          <button (click)="openExportModal()"
-            class="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-md transition-all select-none outline-none border-none">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-            </svg>
-            <span class="text-xs uppercase">Excel</span>
-          </button>
-          
-          <!-- Limpiar -->
-          <button (click)="clearFilters()" [disabled]="!hasActiveFilters"
-            class="flex items-center gap-2 px-4 py-2 rounded-lg font-bold shadow-sm transition-all select-none outline-none border disabled:opacity-30 disabled:cursor-not-allowed"
-            [ngClass]="hasActiveFilters ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-surface-50 text-surface-400 border-surface-200'">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
-            </svg>
-            <span class="text-xs uppercase">Limpiar</span>
-          </button>
-          
-          <!-- Actualizar -->
-          <button (click)="refreshInvoices()"
-            class="flex items-center gap-2 px-4 py-2 bg-white hover:bg-surface-50 text-surface-700 rounded-lg font-bold shadow-md border border-surface-200 transition-all select-none outline-none">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
-            <span class="text-xs uppercase">Actualizar</span>
-          </button>
-          
-          <!-- Sync Pagos Hoy -->
-          <button *ngIf="selectedInvoiceType === 'sales'" (click)="syncMissingPayments()" [disabled]="loading"
-            class="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-md transition-all select-none outline-none border-none disabled:opacity-50">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span class="text-xs uppercase">Sync Facturas Sin Pago</span>
-          </button>
-        </div>
       </div>
 
-      <!-- Row 2: Date Range + Price Range -->
-      <div
-        class="flex flex-col lg:flex-row flex-wrap gap-4 lg:items-center mt-3 pt-3 border-t border-surface-200 w-full">
+      <!-- Row 2: Date Range + Action Buttons -->
+      <div class="flex flex-col lg:flex-row flex-wrap gap-4 lg:items-center mt-3 pt-3 border-t border-surface-200 w-full">
         <!-- Date Range -->
         <div class="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
           <span class="text-sm font-semibold text-surface-600 whitespace-nowrap hidden sm:inline">Fecha:</span>
           <div class="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center">
             <p-datepicker [(ngModel)]="dateFrom" placeholder="Desde" dateFormat="dd/mm/yy" [showIcon]="true"
-              styleClass="w-full sm:w-40" inputStyleClass="py-2 text-sm w-full" (onSelect)="onFilterChange(true)"
+              styleClass="w-full sm:w-36" inputStyleClass="py-2 text-sm w-full" (onSelect)="onFilterChange(true)"
               (onClear)="onFilterChange(true)" [showClear]="true">
             </p-datepicker>
             <p-datepicker [(ngModel)]="dateTo" placeholder="Hasta" dateFormat="dd/mm/yy" [showIcon]="true"
-              styleClass="w-full sm:w-40" inputStyleClass="py-2 text-sm w-full" (onSelect)="onFilterChange(true)"
+              styleClass="w-full sm:w-36" inputStyleClass="py-2 text-sm w-full" (onSelect)="onFilterChange(true)"
               (onClear)="onFilterChange(true)" [showClear]="true">
             </p-datepicker>
           </div>
         </div>
 
-        <!-- Results count -->
-        <div class="w-full lg:w-auto lg:ml-auto text-sm text-surface-500 text-center sm:text-right mt-1 lg:mt-0">
-          <span class="text-primary-600 font-bold">{{ invoices.length }}</span> en pantalla de <span
-            class="text-surface-700 font-bold">{{ totalRecords }}</span> coincidentes totales
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap gap-2 w-full lg:w-auto mt-2 lg:mt-0 lg:ml-auto justify-center sm:justify-start lg:justify-end">
+          <!-- Masiva -->
+          <button (click)="openMassiveSearchModal()"
+            class="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold shadow-sm transition-all select-none outline-none border-none shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m3.75 13.5 10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z" />
+            </svg>
+            <span class="text-[10px] uppercase">Masiva</span>
+          </button>
+          
+          <!-- Exportar -->
+          <button (click)="openExportModal()"
+            class="flex items-center gap-2 px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shadow-sm transition-all select-none outline-none border-none shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            <span class="text-[10px] uppercase">Excel</span>
+          </button>
+          
+          <!-- Limpiar -->
+          <button (click)="clearFilters()" [disabled]="!hasActiveFilters"
+            class="flex items-center gap-2 px-3 py-2 rounded-lg font-bold shadow-sm transition-all select-none outline-none border disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+            [ngClass]="hasActiveFilters ? 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100' : 'bg-surface-50 text-surface-400 border-surface-200'">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+            </svg>
+            <span class="text-[10px] uppercase">Limpiar</span>
+          </button>
+          
+          <!-- Actualizar -->
+          <button (click)="refreshInvoices()"
+            class="flex items-center gap-2 px-3 py-2 bg-white hover:bg-surface-50 text-surface-700 rounded-lg font-bold shadow-sm border border-surface-200 transition-all select-none outline-none shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+            </svg>
+            <span class="text-[10px] uppercase">Actualizar</span>
+          </button>
+          
+          <!-- Sync Pagos Hoy -->
+          <button (click)="syncMissingPayments()" [disabled]="loading || selectedInvoiceType !== 'sales'"
+            class="flex items-center gap-2 px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold shadow-sm transition-all select-none outline-none border-none disabled:opacity-30 disabled:grayscale shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-4 h-4">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-[10px] uppercase">Sync Facturas Sin Pago</span>
+          </button>
         </div>
       </div>
     </div>
