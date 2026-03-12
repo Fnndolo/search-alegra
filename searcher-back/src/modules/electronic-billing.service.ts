@@ -356,7 +356,25 @@ export class ElectronicBillingService {
         const results: { invoiceId: any; success: boolean; error: string; }[] = [];
         this.logger.log(`🚀 Iniciando facturación masiva de ${invoices.length} facturas desde Excel...`);
 
-        // Batch processing - 10 facturas concurrentes a la vez para máxima velocidad sin quemar el rate limit (Alegra permite aprox 30 req/s máximo)
+        // Cargar catálogos una sola vez para búsqueda rápida por nombre
+        const [kupoWarehouses, kupoCostCenters] = await Promise.all([
+            this.getWarehouses(),
+            this.getCostCenters()
+        ]);
+
+        const findWarehouseId = (name: string): string => {
+            if (!name) return '';
+            const found = kupoWarehouses.find(w => w.name.trim().toLowerCase() === name.toLowerCase().trim());
+            return found ? found.id : '';
+        };
+
+        const findCostCenterId = (name: string): string => {
+            if (!name) return '';
+            const found = kupoCostCenters.find(cc => cc.name.trim().toLowerCase() === name.toLowerCase().trim());
+            return found ? found.id : '';
+        };
+
+        // Batch processing - 10 facturas concurrentes a la vez
         const chunkSize = 10;
         let successCount = 0;
         let failCount = 0;
@@ -377,9 +395,8 @@ export class ElectronicBillingService {
                         department: inv.clientDepartment
                     });
 
-                    // Datos de tienda
+                    // Tienda original (Mandatorio para resolución de facturación)
                     let originalStoreKey = inv.originalStore?.toLowerCase().trim();
-                    // Fallback inferir tienda si no está directa
                     if (!originalStoreKey) {
                         const warehouseLower = inv.warehouseName?.toLowerCase();
                         if (warehouseLower?.includes('pasto')) originalStoreKey = 'pasto';
@@ -391,13 +408,18 @@ export class ElectronicBillingService {
 
                     const storeMapping = this.getStoreMapping(originalStoreKey);
 
+                    // Prioridad 1: Buscar IDs por los NOMBRES que vienen en el Excel
+                    // Prioridad 2: Fallback al mapeo por tienda si no se encuentra por nombre
+                    const finalWarehouseId = findWarehouseId(inv.warehouseName) || storeMapping?.warehouseId || '';
+                    const finalCostCenterId = findCostCenterId(inv.costCenterName) || storeMapping?.costCenterId || '';
+
                     // Facturar
                     const response = await this.createKupocellInvoice({
                         clientId: client.id,
                         items: inv.items,
-                        warehouseId: storeMapping?.warehouseId || '',
-                        costCenterId: storeMapping?.costCenterId || '',
-                        applyIva: false, // Ahora se aplica por item dentro del mapeo original
+                        warehouseId: finalWarehouseId,
+                        costCenterId: finalCostCenterId,
+                        applyIva: false, 
                         date: inv.date || new Date().toISOString().split('T')[0],
                         originalInvoiceId: inv.originalInvoiceId,
                         originalStore: originalStoreKey,
@@ -432,7 +454,7 @@ export class ElectronicBillingService {
 
             await Promise.all(chunkPromises);
 
-            // Un pequeño respiro de 300ms entre bloques para dar tiempo a la API y la BD
+            // Un pequeño respiro de 300ms entre bloques
             if (i + chunkSize < invoices.length) {
                 await new Promise(resolve => setTimeout(resolve, 300));
             }
