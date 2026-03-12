@@ -1218,7 +1218,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         if (items.length === 0) {
           exportRows.push(createRow(null, true));
         } else {
-          items.forEach((item, index) => {
+          items.forEach((item: any, index: number) => {
             exportRows.push(createRow(item, index === 0));
           });
         }
@@ -1246,7 +1246,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
           });
         } else {
           // Crear una fila por cada item
-          items.forEach(item => {
+          items.forEach((item: any) => {
             exportRows.push({
               'Fecha': inv.date,
               'Número Factura': inv.numberTemplate?.number || '',
