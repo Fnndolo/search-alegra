@@ -1046,29 +1046,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   }
 
   prepareExportData(invoices: any[], maxBanks: number): any[] {
-    // Función auxiliar para agrupar items por nombre
-    const groupItems = (items: any[]) => {
-      if (!items || items.length === 0) return [];
 
-      const grouped = new Map<string, { name: string, quantity: number, price: number, description: string }>();
-
-      items.forEach(item => {
-        const name = item.name || '';
-        if (grouped.has(name)) {
-          const existing = grouped.get(name)!;
-          existing.quantity += parseInt(item.quantity || 0);
-        } else {
-          grouped.set(name, {
-            name: name,
-            quantity: parseInt(item.quantity || 0),
-            price: item.price || 0,
-            description: item.description || ''
-          });
-        }
-      });
-
-      return Array.from(grouped.values());
-    };
 
     // Función para extraer IMEIs/seriales de un texto
     const extractIdentifiers = (text: string): string[] => {
@@ -1144,7 +1122,6 @@ export class InvoicesComponent implements OnInit, OnDestroy {
 
       invoices.forEach(inv => {
         const items = inv.items || [];
-        const groupedItems = groupItems(items);
 
         // Map Store identifiers
         const storeKey = inv.storeKey || this.selectedStore;
@@ -1238,10 +1215,10 @@ export class InvoicesComponent implements OnInit, OnDestroy {
           return row;
         };
 
-        if (groupedItems.length === 0) {
+        if (items.length === 0) {
           exportRows.push(createRow(null, true));
         } else {
-          groupedItems.forEach((item, index) => {
+          items.forEach((item, index) => {
             exportRows.push(createRow(item, index === 0));
           });
         }
@@ -1253,11 +1230,10 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       const exportRows: any[] = [];
 
       invoices.forEach(inv => {
-        const items = inv.purchases?.items || [];
-        const groupedItems = groupItems(items);
+        const items = inv.purchases?.items || inv.items || [];
 
         // Si no hay items, crear una fila con los datos de la factura sin items
-        if (groupedItems.length === 0) {
+        if (items.length === 0) {
           exportRows.push({
             'Fecha': inv.date,
             'Número Factura': inv.numberTemplate?.number || '',
@@ -1270,7 +1246,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
           });
         } else {
           // Crear una fila por cada item
-          groupedItems.forEach(item => {
+          items.forEach(item => {
             exportRows.push({
               'Fecha': inv.date,
               'Número Factura': inv.numberTemplate?.number || '',
