@@ -353,14 +353,18 @@ export class ElectronicBillingService {
     // ─── Mass Excel Processing ────────────────────────────────────
 
     async processMassExcelInvoices(invoices: any[]) {
-        const results: { invoiceId: any; success: boolean; error: string; }[] = [];
-        this.logger.log(`🚀 Iniciando facturación masiva de ${invoices.length} facturas desde Excel...`);
+        const results: { invoiceId: any; success: boolean; error: string; paymentErrors?: string[] }[] = [];
+        this.logger.log(`🚀 Iniciando facturación masiva de ${invoices.length} facturas desde Excel (SECUENCIAL para evitar colisión de numeración)...`);
 
-        // Cargar catálogos una sola vez para búsqueda rápida por nombre
-        const [kupoWarehouses, kupoCostCenters] = await Promise.all([
+        // Precargar TODOS los catálogos UNA SOLA VEZ antes del bucle
+        const [kupoWarehouses, kupoCostCenters, kupoBanks, bankMappings] = await Promise.all([
             this.getWarehouses(),
-            this.getCostCenters()
+            this.getCostCenters(),
+            this.getKupoBanks(),
+            this.getBankMappings()
         ]);
+
+        this.logger.log(`📦 Catálogos precargados: ${kupoWarehouses.length} bodegas, ${kupoCostCenters.length} centros, ${kupoBanks.length} bancos, ${bankMappings.length} mapeos bancarios`);
 
         const findWarehouseId = (name: string): string => {
             if (!name) return '';
@@ -374,89 +378,103 @@ export class ElectronicBillingService {
             return found ? found.id : '';
         };
 
-        // Batch processing - 10 facturas concurrentes a la vez
-        const chunkSize = 10;
         let successCount = 0;
         let failCount = 0;
 
-        for (let i = 0; i < invoices.length; i += chunkSize) {
-            const chunk = invoices.slice(i, i + chunkSize);
-            const chunkPromises = chunk.map(async (inv) => {
-                let result: { invoiceId: any; success: boolean; error: string; } = { invoiceId: inv.originalInvoiceId, success: false, error: '' };
-                try {
-                    // Obtener cliente (Lo busca o lo crea)
-                    const client = await this.findOrCreateClient({
-                        name: String(inv.clientName || 'Cliente Mostrador'),
-                        identification: inv.clientIdentification ? String(inv.clientIdentification) : '',
-                        email: inv.clientEmail,
-                        phone: inv.clientPhone,
-                        address: inv.clientAddress,
-                        city: inv.clientCity,
-                        department: inv.clientDepartment
-                    });
+        // PROCESAMIENTO SECUENCIAL: una factura a la vez para evitar colisión de números
+        for (let i = 0; i < invoices.length; i++) {
+            const inv = invoices[i];
+            let result: { invoiceId: any; success: boolean; error: string; paymentErrors?: string[] } = { 
+                invoiceId: inv.originalInvoiceId, success: false, error: '' 
+            };
 
-                    // Tienda original (Mandatorio para resolución de facturación)
-                    let originalStoreKey = inv.originalStore?.toLowerCase().trim();
-                    if (!originalStoreKey) {
-                        const warehouseLower = inv.warehouseName?.toLowerCase();
-                        if (warehouseLower?.includes('pasto')) originalStoreKey = 'pasto';
-                        else if (warehouseLower?.includes('medellin')) originalStoreKey = 'medellin';
-                        else if (warehouseLower?.includes('pereira')) originalStoreKey = 'pereira';
-                        else if (warehouseLower?.includes('armenia')) originalStoreKey = 'armenia';
-                        else originalStoreKey = 'pasto'; // default
-                    }
+            try {
+                this.logger.log(`📄 [${i + 1}/${invoices.length}] Procesando factura ${inv.originalInvoiceId}...`);
 
-                    const storeMapping = this.getStoreMapping(originalStoreKey);
+                // Obtener cliente
+                const client = await this.findOrCreateClient({
+                    name: String(inv.clientName || 'Cliente Mostrador'),
+                    identification: inv.clientIdentification ? String(inv.clientIdentification) : '',
+                    email: inv.clientEmail,
+                    phone: inv.clientPhone,
+                    address: inv.clientAddress,
+                    city: inv.clientCity,
+                    department: inv.clientDepartment
+                });
 
-                    // Prioridad 1: Buscar IDs por los NOMBRES que vienen en el Excel
-                    // Prioridad 2: Fallback al mapeo por tienda si no se encuentra por nombre
-                    const finalWarehouseId = findWarehouseId(inv.warehouseName) || storeMapping?.warehouseId || '';
-                    const finalCostCenterId = findCostCenterId(inv.costCenterName) || storeMapping?.costCenterId || '';
-
-                    // Facturar
-                    const response = await this.createKupocellInvoice({
-                        clientId: client.id,
-                        items: inv.items,
-                        warehouseId: finalWarehouseId,
-                        costCenterId: finalCostCenterId,
-                        applyIva: false, 
-                        date: inv.date || new Date().toISOString().split('T')[0],
-                        originalInvoiceId: inv.originalInvoiceId,
-                        originalStore: originalStoreKey,
-                        payments: inv.payments,
-                        anotation: inv.anotation,
-                        observations: inv.observations,
-                        seller: inv.observations?.replace('Vendedor: ', '') || undefined,
-                    });
-
-                    if (response.success) {
-                        result.success = true;
-                        successCount++;
-                    } else {
-                        result.error = response.error || 'Error desconocido';
-                        failCount++;
-                    }
-                } catch (error) {
-                    this.logger.error(`Error procesando factura masiva ${inv.originalInvoiceId}: ${error.message}`);
-                    result.error = error.message;
-                    failCount++;
-
-                    // Guardar log de error en la BD para que sea visible en el UI
-                    const logIdentifier = inv.originalInvoiceId.includes('-') ? inv.originalInvoiceId : `${inv.originalStore || 'desconocida'}-${inv.originalInvoiceId}`;
-                    await this.syncLogRepo.save({
-                        originalInvoiceId: logIdentifier,
-                        status: SyncStatus.FAILED,
-                        errorMessage: error.message,
-                    });
+                // Tienda original (para resolución de numeración)
+                let originalStoreKey = inv.originalStore?.toLowerCase().trim();
+                if (!originalStoreKey) {
+                    const warehouseLower = inv.warehouseName?.toLowerCase();
+                    if (warehouseLower?.includes('pasto')) originalStoreKey = 'pasto';
+                    else if (warehouseLower?.includes('medellin')) originalStoreKey = 'medellin';
+                    else if (warehouseLower?.includes('pereira')) originalStoreKey = 'pereira';
+                    else if (warehouseLower?.includes('armenia')) originalStoreKey = 'armenia';
+                    else originalStoreKey = 'pasto';
                 }
-                results.push(result);
-            });
 
-            await Promise.all(chunkPromises);
+                const storeMapping = this.getStoreMapping(originalStoreKey);
 
-            // Un pequeño respiro de 300ms entre bloques
-            if (i + chunkSize < invoices.length) {
-                await new Promise(resolve => setTimeout(resolve, 300));
+                // Prioridad: nombres del Excel > mapeo por tienda
+                const finalWarehouseId = findWarehouseId(inv.warehouseName) || storeMapping?.warehouseId || '';
+                const finalCostCenterId = findCostCenterId(inv.costCenterName) || storeMapping?.costCenterId || '';
+
+                // Crear factura (SIN pagos, los procesamos aparte con mejor control)
+                const response = await this.createKupocellInvoice({
+                    clientId: client.id,
+                    items: inv.items,
+                    warehouseId: finalWarehouseId,
+                    costCenterId: finalCostCenterId,
+                    applyIva: false,
+                    date: inv.date || new Date().toISOString().split('T')[0],
+                    originalInvoiceId: inv.originalInvoiceId,
+                    originalStore: originalStoreKey,
+                    payments: undefined,  // NO pasar pagos aquí, los procesamos manualmente abajo
+                    anotation: inv.anotation,
+                    observations: inv.observations,
+                    seller: inv.observations?.replace('Vendedor: ', '') || undefined,
+                });
+
+                if (response.success) {
+                    result.success = true;
+                    successCount++;
+
+                    // Ahora procesar los pagos de forma controlada con los catálogos precargados
+                    if (inv.payments && inv.payments.length > 0 && response.invoiceId) {
+                        const paymentErrors = await this.processInvoicePaymentsWithPreloadedData(
+                            inv.payments,
+                            response.invoiceId,
+                            inv.date || new Date().toISOString().split('T')[0],
+                            originalStoreKey,
+                            kupoBanks,
+                            bankMappings
+                        );
+                        if (paymentErrors.length > 0) {
+                            result.paymentErrors = paymentErrors;
+                        }
+                    }
+                } else {
+                    result.error = response.error || 'Error desconocido';
+                    failCount++;
+                }
+            } catch (error) {
+                this.logger.error(`Error procesando factura masiva ${inv.originalInvoiceId}: ${error.message}`);
+                result.error = error.message;
+                failCount++;
+
+                const logIdentifier = inv.originalInvoiceId.includes('-') ? inv.originalInvoiceId : `${inv.originalStore || 'desconocida'}-${inv.originalInvoiceId}`;
+                await this.syncLogRepo.save({
+                    originalInvoiceId: logIdentifier,
+                    status: SyncStatus.FAILED,
+                    errorMessage: error.message,
+                });
+            }
+
+            results.push(result);
+
+            // Respiro de 500ms entre cada factura para dar tiempo a Alegra
+            if (i < invoices.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
         }
 
@@ -588,8 +606,6 @@ export class ElectronicBillingService {
     }
 
     async saveProductMappings(mappings: Partial<ProductMapping>[]) {
-        // En una implementación real, podríamos querer un UPSERT o borrar y recrear.
-        // Dado que la UI maneja toda la tabla junta, borremos todo y recreemos para simplificar.
         await this.productMappingRepo.clear();
 
         const entities = mappings.map(m => this.productMappingRepo.create(m));
@@ -616,12 +632,18 @@ export class ElectronicBillingService {
 
     /**
      * Procesa los pagos de una factura original y los registra en Kupocell.
+     * Versión que recibe catálogos pre-cargados para evitar llamadas redundantes.
      */
-    async processInvoicePayments(payments: { bankName: string, amount: number }[], kupoInvoiceId: string, date: string, originalStore: string) {
-        this.logger.log(`💰 Procesando ${payments.length} pagos para factura Kupocell ${kupoInvoiceId} (Origen: ${originalStore})...`);
-
-        const kupoBanks = await this.getKupoBanks();
-        const mappings = await this.getBankMappings();
+    async processInvoicePaymentsWithPreloadedData(
+        payments: { bankName: string, amount: number }[],
+        kupoInvoiceId: string,
+        date: string,
+        originalStore: string,
+        kupoBanks: any[],
+        bankMappings: any[]
+    ): Promise<string[]> {
+        const paymentErrors: string[] = [];
+        this.logger.log(`💰 Procesando ${payments.length} pago(s) para factura Kupocell ${kupoInvoiceId} (Origen: ${originalStore})...`);
 
         // Determinar columna según tienda
         let storeColumnName = '';
@@ -633,21 +655,34 @@ export class ElectronicBillingService {
             default: storeColumnName = ''; break;
         }
 
+        // Obtener el ID del primer banco disponible como fallback final
+        const fallbackBankId = kupoBanks.length > 0 ? kupoBanks[0].id : null;
+        const fallbackBankName = kupoBanks.length > 0 ? kupoBanks[0].name : 'N/A';
+
         for (const payment of payments) {
             try {
+                if (!payment.amount || payment.amount <= 0) {
+                    this.logger.warn(`⚠️ Saltando pago con monto inválido: ${payment.amount} para banco "${payment.bankName}"`);
+                    continue;
+                }
+
                 let targetBankId: string | null = null;
+                let matchMethod = '';
 
                 // 1. Buscar en mapeos manuales si tenemos columna de tienda
                 if (storeColumnName) {
-                    const mapping = mappings.find(m => m[storeColumnName]?.trim().toLowerCase() === payment.bankName.trim().toLowerCase());
+                    const mapping = bankMappings.find(m => 
+                        m[storeColumnName]?.trim().toLowerCase() === payment.bankName.trim().toLowerCase()
+                    );
                     if (mapping) {
                         targetBankId = mapping.kupoBankId;
+                        matchMethod = `mapeo manual (${storeColumnName}: "${payment.bankName}" → kupoBankId: ${mapping.kupoBankId}, kupoName: "${mapping.kupoBankName}")`;
                     }
                 }
 
+                // 2. Fallback: Búsqueda por similitud/contiene
                 if (!targetBankId) {
-                    // 2. Fallback: Búsqueda por similitud/contiene (según sugerido por usuario)
-                    const lowerSource = payment.bankName.toLowerCase();
+                    const lowerSource = payment.bankName.toLowerCase().trim();
                     const fuzzyMatch = kupoBanks.find(kb =>
                         kb.name.toLowerCase().includes(lowerSource) ||
                         lowerSource.includes(kb.name.toLowerCase())
@@ -655,17 +690,28 @@ export class ElectronicBillingService {
 
                     if (fuzzyMatch) {
                         targetBankId = fuzzyMatch.id;
-                        this.logger.log(`🔍 Match difuso para banco "${payment.bankName}" -> "${fuzzyMatch.name}"`);
+                        matchMethod = `match difuso ("${payment.bankName}" ≈ "${fuzzyMatch.name}", ID: ${fuzzyMatch.id})`;
                     }
                 }
 
+                // 3. Fallback final: Primer banco disponible en Kupocell
+                if (!targetBankId && fallbackBankId) {
+                    targetBankId = fallbackBankId;
+                    matchMethod = `FALLBACK a primer banco disponible ("${fallbackBankName}", ID: ${fallbackBankId})`;
+                    this.logger.warn(`⚠️ Banco "${payment.bankName}" no encontrado en mapeos ni por similitud. Usando fallback: "${fallbackBankName}"`);
+                }
+
                 if (!targetBankId) {
-                    this.logger.warn(`⚠️ No se encontró banco destino para "${payment.bankName}". El pago de ${payment.amount} NO se registrará.`);
+                    const errMsg = `No hay bancos disponibles en Kupocell para registrar pago de "${payment.bankName}" ($${payment.amount})`;
+                    this.logger.error(`❌ ${errMsg}`);
+                    paymentErrors.push(errMsg);
                     continue;
                 }
 
-                // 3. Registrar el pago en Alegra Kupocell
-                await this.createKupocellPayment({
+                this.logger.log(`🏦 Banco resuelto para "${payment.bankName}" ($${payment.amount}) → ${matchMethod}`);
+
+                // Registrar el pago con reintentos
+                await this.createKupocellPaymentWithRetry({
                     invoiceId: kupoInvoiceId,
                     bankId: targetBankId,
                     amount: payment.amount,
@@ -673,27 +719,79 @@ export class ElectronicBillingService {
                 });
 
             } catch (err) {
-                this.logger.error(`❌ Error registrando pago de "${payment.bankName}": ${err.message}`);
+                const errDetail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+                const errMsg = `Error registrando pago de "${payment.bankName}" ($${payment.amount}): ${errDetail}`;
+                this.logger.error(`❌ ${errMsg}`);
+                paymentErrors.push(errMsg);
             }
         }
+
+        if (paymentErrors.length > 0) {
+            this.logger.warn(`⚠️ ${paymentErrors.length} error(es) de pago para factura ${kupoInvoiceId}`);
+        } else {
+            this.logger.log(`✅ Todos los pagos registrados exitosamente para factura ${kupoInvoiceId}`);
+        }
+
+        return paymentErrors;
     }
 
-    async createKupocellPayment(params: { invoiceId: string, bankId: string, amount: number, date: string }) {
+    /**
+     * Procesa los pagos de una factura (versión legacy que carga datos cada vez).
+     * Usada por la facturación individual (no masiva).
+     */
+    async processInvoicePayments(payments: { bankName: string, amount: number }[], kupoInvoiceId: string, date: string, originalStore: string) {
+        const kupoBanks = await this.getKupoBanks();
+        const mappings = await this.getBankMappings();
+        return this.processInvoicePaymentsWithPreloadedData(payments, kupoInvoiceId, date, originalStore, kupoBanks, mappings);
+    }
+
+    /**
+     * Crea un pago en Kupocell con hasta 3 reintentos automáticos.
+     */
+    async createKupocellPaymentWithRetry(params: { invoiceId: string, bankId: string, amount: number, date: string }, maxRetries = 3) {
         const payload = {
             date: params.date,
-            bankAccount: params.bankId, // Alegra espera el string ID directo aquí para pagos
+            bankAccount: params.bankId,
             invoices: [
                 {
                     id: params.invoiceId,
                     amount: params.amount
                 }
             ],
-            type: 'in' // 'in' para recibos de caja (inbound)
+            type: 'in'
         };
 
-        const response = await this.alegraKupoApi.post('/payments', payload);
-        this.logger.log(`✅ Pago de ${params.amount} registrado con éxito (ID Pago: ${response.data.id})`);
-        return response.data;
+        let lastError: any = null;
+
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                this.logger.log(`💳 Intento ${attempt}/${maxRetries}: Registrando pago de $${params.amount} → Factura ${params.invoiceId}, Banco ${params.bankId}`);
+                this.logger.debug(`    Payload: ${JSON.stringify(payload)}`);
+                
+                const response = await this.alegraKupoApi.post('/payments', payload);
+                this.logger.log(`✅ Pago de $${params.amount} registrado con éxito (ID Pago: ${response.data.id}) en intento ${attempt}`);
+                return response.data;
+            } catch (err) {
+                lastError = err;
+                const errDetail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+                this.logger.warn(`⚠️ Intento ${attempt}/${maxRetries} falló para pago de $${params.amount}: ${errDetail}`);
+
+                if (attempt < maxRetries) {
+                    // Esperar más tiempo entre cada reintento (exponential backoff)
+                    const waitMs = attempt * 1000;
+                    this.logger.log(`   ⏳ Esperando ${waitMs}ms antes de reintentar...`);
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                }
+            }
+        }
+
+        // Todos los reintentos fallaron
+        const finalError = lastError?.response?.data ? JSON.stringify(lastError.response.data) : lastError?.message;
+        throw new Error(`Pago falló después de ${maxRetries} intentos: ${finalError}`);
+    }
+
+    async createKupocellPayment(params: { invoiceId: string, bankId: string, amount: number, date: string }) {
+        return this.createKupocellPaymentWithRetry(params);
     }
 
     async createInvoice(invoicePayload: any, originalIdentifier: string) {

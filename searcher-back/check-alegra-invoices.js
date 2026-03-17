@@ -2,7 +2,7 @@ const axios = require('axios');
 require('dotenv').config();
 
 // Configuración
-const STORE = 'armenia'; // Cambia aquí la tienda: 'pasto', 'medellin', 'armenia', 'pereira'
+const STORE = 'pasto'; // Cambia aquí la tienda: 'pasto', 'medellin', 'armenia', 'pereira'
 
 // Credenciales de Alegra por tienda
 const STORE_CREDENTIALS = {
