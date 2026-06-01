@@ -623,8 +623,11 @@ export class BillsDbService {
       this.logger.error(`❌ Error asegurando persistencia completa de bills para ${store}`, error);
       throw error;
     } finally {
-      syncStatus.isSyncing = false;
-      await this.syncStatusRepository.save(syncStatus);
+      // Re-leer el estado FRESCO para no pisar lo que escribió loadAllBillsFromAPI
+      // (totalRecords / isFullyLoaded). Solo liberamos la bandera isSyncing.
+      const fresh = await this.getSyncStatus(store);
+      fresh.isSyncing = false;
+      await this.syncStatusRepository.save(fresh);
     }
   }
 

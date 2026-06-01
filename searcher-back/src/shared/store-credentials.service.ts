@@ -24,25 +24,25 @@ export class StoreCredentialsService {
     });
 
     this.storeCredentials.set('medellin', {
-      apiKey: (this.configService.get<string>('MEDELLIN_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
+      apiKey: (this.configService.get<string>('MEDELLIN_API_KEY')) as string,
       invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_MEDELLIN') || this.configService.get<string>('ALEGRA_API_URL')) as string,
       billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_MEDELLIN') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
     });
 
     this.storeCredentials.set('armenia', {
-      apiKey: (this.configService.get<string>('ARMENIA_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
+      apiKey: (this.configService.get<string>('ARMENIA_API_KEY')) as string,
       invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_ARMENIA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
       billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_ARMENIA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
     });
 
     this.storeCredentials.set('pereira', {
-      apiKey: (this.configService.get<string>('PEREIRA_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
+      apiKey: (this.configService.get<string>('PEREIRA_API_KEY')) as string,
       invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_PEREIRA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
       billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_PEREIRA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
     });
 
     this.storeCredentials.set('bogota', {
-      apiKey: (this.configService.get<string>('BOGOTA_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
+      apiKey: (this.configService.get<string>('BOGOTA_API_KEY')) as string,
       invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_BOGOTA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
       billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_BOGOTA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
     });
@@ -60,6 +60,15 @@ export class StoreCredentialsService {
     const credentials = this.storeCredentials.get(normalizedStore);
     if (!credentials) {
       throw new BadRequestException(`No se encontraron credenciales para la tienda: ${store}`);
+    }
+
+    // Evitar el footgun de usar la API key de otra tienda: si la sede no tiene su PROPIA
+    // key configurada, fallar claramente en vez de caer a ALEGRA_API_KEY (cuenta de Pasto)
+    // y terminar cargando datos de Pasto bajo otra sede.
+    if (!credentials.apiKey) {
+      throw new BadRequestException(
+        `No hay API key configurada para la tienda "${store}". Configure ${normalizedStore.toUpperCase()}_API_KEY en el entorno (Railway).`
+      );
     }
 
     return credentials;
