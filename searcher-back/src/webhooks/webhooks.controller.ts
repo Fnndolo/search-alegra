@@ -104,7 +104,14 @@ export class WebhooksController {
             break;
         }
       } catch (error) {
-        this.logger.error(`Error processing webhook: ${error.message}`);
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        this.logger.error(
+          `❌ Error procesando webhook para tienda="${store}" subject="${payload?.subject}": ${error.message}` +
+          (status ? ` | HTTP ${status}` : '') +
+          (data ? ` | respuesta: ${JSON.stringify(data).slice(0, 300)}` : ''),
+          error?.stack,
+        );
       }
     });
   }

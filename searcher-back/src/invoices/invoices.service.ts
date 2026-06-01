@@ -18,6 +18,9 @@ export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
   private readonly maxRetries = 3;
   private readonly baseDelay = 1000;
+  // Si una sincronización lleva más de estos minutos "en progreso" sin avanzar,
+  // se considera colgada (proceso reiniciado a mitad) y se permite re-disparar la carga.
+  private readonly syncStaleMinutes = 15;
 
   constructor(
     private readonly configService: ConfigService,
@@ -68,6 +71,43 @@ export class InvoicesService {
   }
 
   /**
+   * Indica si una sincronización marcada como "en progreso" en realidad quedó
+   * colgada (el proceso murió antes de limpiar la bandera). Se basa en updatedAt.
+   */
+  private isStuckSyncing(syncStatus: SyncStatus): boolean {
+    if (!syncStatus.isSyncing) return false;
+    const updated = syncStatus.updatedAt ? new Date(syncStatus.updatedAt).getTime() : 0;
+    return Date.now() - updated > this.syncStaleMinutes * 60 * 1000;
+  }
+
+  /**
+   * Si una sincronización quedó colgada, libera la bandera para permitir reintentar.
+   */
+  private async clearStuckSync(syncStatus: SyncStatus): Promise<void> {
+    if (this.isStuckSyncing(syncStatus)) {
+      this.logger.warn(`⚠️ Sincronización de facturas colgada para ${syncStatus.store} (sin avance hace >${this.syncStaleMinutes}min). Liberando bandera isSyncing.`);
+      syncStatus.isSyncing = false;
+      await this.syncStatusRepository.save(syncStatus);
+    }
+  }
+
+  /**
+   * Decide si se debe (re)disparar una carga para esta tienda:
+   * - Si está sincronizando de verdad (no colgada): no.
+   * - Si no hay datos: sí.
+   * - Si la carga quedó incompleta: sí, pero con cooldown para no martillar la API.
+   */
+  private shouldTriggerLoad(syncStatus: SyncStatus): boolean {
+    if (syncStatus.isSyncing && !this.isStuckSyncing(syncStatus)) return false;
+    if (syncStatus.totalRecords === 0) return true;
+    if (!syncStatus.isFullyLoaded) {
+      const updated = syncStatus.updatedAt ? new Date(syncStatus.updatedAt).getTime() : 0;
+      return Date.now() - updated > this.syncStaleMinutes * 60 * 1000;
+    }
+    return false;
+  }
+
+  /**
    * Obtiene las facturas desde la base de datos con paginación
    */
   async getCachedInvoices(store: string): Promise<{
@@ -89,9 +129,12 @@ export class InvoicesService {
 
     const syncStatus = await this.getSyncStatus(store);
 
-    // Si no hay datos, inicializar la carga
-    if (syncStatus.totalRecords === 0 && !syncStatus.isSyncing) {
-      this.logger.log(`Iniciando carga inicial para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    // Liberar una sincronización colgada (proceso reiniciado a mitad de carga)
+    await this.clearStuckSync(syncStatus);
+
+    // (Re)disparar la carga si no hay datos o si quedó incompleta
+    if (this.shouldTriggerLoad(syncStatus)) {
+      this.logger.log(`Iniciando/reanudando carga para ${this.storeCredentialsService.getStoreDisplayName(store)} (fullyLoaded=${syncStatus.isFullyLoaded}, total=${syncStatus.totalRecords})`);
       this.initializeDataLoad(store).catch(error => {
         this.logger.error(`Error en carga inicial para ${store}`, error);
       });
@@ -189,16 +232,18 @@ export class InvoicesService {
     const allFullyLoaded = syncStatuses.every(status => status.isFullyLoaded);
     const totalRecords = syncStatuses.reduce((sum, status) => sum + status.totalRecords, 0);
 
-    // Inicializar carga para tiendas sin datos
-    syncStatuses.forEach((syncStatus, index) => {
+    // Inicializar/reanudar carga para tiendas sin datos o con carga incompleta
+    for (let index = 0; index < syncStatuses.length; index++) {
+      const syncStatus = syncStatuses[index];
       const store = physicalStores[index];
-      if (syncStatus.totalRecords === 0 && !syncStatus.isSyncing) {
-        this.logger.log(`Iniciando carga inicial para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+      await this.clearStuckSync(syncStatus);
+      if (this.shouldTriggerLoad(syncStatus)) {
+        this.logger.log(`Iniciando/reanudando carga para ${this.storeCredentialsService.getStoreDisplayName(store)} (fullyLoaded=${syncStatus.isFullyLoaded}, total=${syncStatus.totalRecords})`);
         this.initializeDataLoad(store).catch(error => {
           this.logger.error(`Error en carga inicial para ${store}`, error);
         });
       }
-    });
+    }
 
     return {
       updating: anyUpdating,
@@ -303,9 +348,9 @@ export class InvoicesService {
               }
             });
 
-            // Guardar en la base de datos
+            // Guardar en la base de datos (sin consultar medios de pago aquí: se hace en segundo plano)
             if (newInvoices.length > 0) {
-              await this.saveInvoicesToDB(store, newInvoices, false);
+              await this.saveInvoicesToDB(store, newInvoices, false, true);
 
               const currentCount = await this.invoiceRepository.count({ where: { store } });
               this.logger.log(`Progreso de carga ${this.storeCredentialsService.getStoreDisplayName(store)}: ${currentCount}/${total} facturas`);
@@ -331,6 +376,10 @@ export class InvoicesService {
       } else {
         this.logger.log(`✅ Carga completa finalizada para ${this.storeCredentialsService.getStoreDisplayName(store)}. Total: ${finalCount} facturas`);
       }
+
+      // Rellenar los medios de pago en segundo plano (no bloquea la carga ni el isSyncing ya liberado)
+      this.updateAllPaymentMethods(store).catch(err =>
+        this.logger.warn(`No se pudieron actualizar medios de pago en segundo plano para ${store}: ${err.message}`));
 
     } catch (error) {
       this.logger.error(`Error en carga de facturas para ${store}`, error);
@@ -384,11 +433,15 @@ export class InvoicesService {
     }
   }
 
-  private async saveInvoicesToDB(store: string, invoices: any[], markAsPendiente = true): Promise<void> {
+  private async saveInvoicesToDB(store: string, invoices: any[], markAsPendiente = true, skipPaymentFetch = false): Promise<void> {
     for (const invoiceData of invoices) {
-      // Obtener todos los medios de pago detallados
-      const bankAccounts = await this.fetchAllPaymentBankAccounts(store, invoiceData);
-      const firstBankName = bankAccounts.length > 0 ? bankAccounts[0].bankName : null;
+      // Obtener los medios de pago detallados.
+      // En la carga masiva (skipPaymentFetch=true) NO se consultan aquí para evitar
+      // un N+1 contra la API de Alegra; se rellenan luego en segundo plano.
+      const bankAccounts = skipPaymentFetch
+        ? null
+        : await this.fetchAllPaymentBankAccounts(store, invoiceData);
+      const firstBankName = bankAccounts && bankAccounts.length > 0 ? bankAccounts[0].bankName : null;
 
       // Buscar si ya existe
       const existingInvoice = await this.invoiceRepository.findOne({
@@ -403,8 +456,11 @@ export class InvoicesService {
         existingInvoice.data = invoiceData;
         existingInvoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         existingInvoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
-        existingInvoice.bankAccountName = firstBankName;
-        existingInvoice.paymentBankAccounts = bankAccounts;
+        // Solo tocar la info bancaria si efectivamente la consultamos (no en carga masiva)
+        if (!skipPaymentFetch) {
+          existingInvoice.bankAccountName = firstBankName;
+          existingInvoice.paymentBankAccounts = bankAccounts;
+        }
 
         // Si fue anulada o es borrador, quitarle el billingStatus para que desaparezca del listado
         if (isVoidOrDraft) {
@@ -423,7 +479,7 @@ export class InvoicesService {
         invoice.datetime = invoiceData.datetime ? new Date(invoiceData.datetime) : null;
         invoice.date = invoiceData.date ? new Date(invoiceData.date) : null;
         invoice.bankAccountName = firstBankName;
-        invoice.paymentBankAccounts = bankAccounts;
+        invoice.paymentBankAccounts = bankAccounts || [];
         // Solo poner pendiente si NO es anulada ni borrador
         invoice.billingStatus = (markAsPendiente && !isVoidOrDraft) ? 'pendiente' : null;
         await this.invoiceRepository.save(invoice);
@@ -436,6 +492,9 @@ export class InvoicesService {
    */
   async updateInvoicesManually(store: string): Promise<void> {
     const syncStatus = await this.getSyncStatus(store);
+
+    // Liberar una sincronización colgada para que el botón "actualizar" no quede bloqueado
+    await this.clearStuckSync(syncStatus);
 
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una actualización en progreso para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
@@ -667,7 +726,14 @@ export class InvoicesService {
       
       return formattedInvoice || invoiceData;
     } catch (error) {
-      this.logger.error(`Error actualizando factura ${invoiceId} para ${store}`, error);
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+      this.logger.error(
+        `Error actualizando factura ${invoiceId} para ${store}` +
+        (status ? ` | HTTP ${status}` : '') +
+        (data ? ` | respuesta: ${JSON.stringify(data).slice(0, 300)}` : ''),
+        error?.stack,
+      );
       throw new ServiceUnavailableException(`Error actualizando factura: ${error.message}`);
     }
   }

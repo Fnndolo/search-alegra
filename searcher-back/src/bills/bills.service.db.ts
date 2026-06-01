@@ -18,6 +18,9 @@ export class BillsDbService {
   private readonly logger = new Logger(BillsDbService.name);
   private readonly maxRetries = 3;
   private readonly baseDelay = 1000;
+  // Si una sincronización lleva más de estos minutos "en progreso" sin avanzar,
+  // se considera colgada (proceso reiniciado a mitad) y se permite re-disparar la carga.
+  private readonly syncStaleMinutes = 15;
 
   constructor(
     private readonly configService: ConfigService,
@@ -81,6 +84,43 @@ export class BillsDbService {
   }
 
   /**
+   * Indica si una sincronización marcada como "en progreso" en realidad quedó
+   * colgada (el proceso murió antes de limpiar la bandera). Se basa en updatedAt.
+   */
+  private isStuckSyncing(syncStatus: SyncStatus): boolean {
+    if (!syncStatus.isSyncing) return false;
+    const updated = syncStatus.updatedAt ? new Date(syncStatus.updatedAt).getTime() : 0;
+    return Date.now() - updated > this.syncStaleMinutes * 60 * 1000;
+  }
+
+  /**
+   * Si una sincronización quedó colgada, libera la bandera para permitir reintentar.
+   */
+  private async clearStuckSync(syncStatus: SyncStatus): Promise<void> {
+    if (this.isStuckSyncing(syncStatus)) {
+      this.logger.warn(`⚠️ Sincronización de bills colgada para ${syncStatus.store} (sin avance hace >${this.syncStaleMinutes}min). Liberando bandera isSyncing.`);
+      syncStatus.isSyncing = false;
+      await this.syncStatusRepository.save(syncStatus);
+    }
+  }
+
+  /**
+   * Decide si se debe (re)disparar una carga para esta tienda:
+   * - Si está sincronizando de verdad (no colgada): no.
+   * - Si no hay datos: sí.
+   * - Si la carga quedó incompleta: sí, pero con cooldown para no martillar la API.
+   */
+  private shouldTriggerLoad(syncStatus: SyncStatus): boolean {
+    if (syncStatus.isSyncing && !this.isStuckSyncing(syncStatus)) return false;
+    if (syncStatus.totalRecords === 0) return true;
+    if (!syncStatus.isFullyLoaded) {
+      const updated = syncStatus.updatedAt ? new Date(syncStatus.updatedAt).getTime() : 0;
+      return Date.now() - updated > this.syncStaleMinutes * 60 * 1000;
+    }
+    return false;
+  }
+
+  /**
    * Obtiene las bills desde la base de datos con paginación
    */
   async getCachedBills(store: string): Promise<{
@@ -104,9 +144,12 @@ export class BillsDbService {
 
     this.logger.log(`Estado de bills para ${store}: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}, isFullyLoaded=${syncStatus.isFullyLoaded}`);
 
-    // Si no hay datos o la carga no está completa, inicializar la carga
-    if ((!syncStatus.isFullyLoaded || syncStatus.totalRecords === 0) && !syncStatus.isSyncing) {
-      this.logger.log(`Iniciando carga inicial de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+    // Liberar una sincronización colgada (proceso reiniciado a mitad de carga)
+    await this.clearStuckSync(syncStatus);
+
+    // (Re)disparar la carga si no hay datos o si quedó incompleta
+    if (this.shouldTriggerLoad(syncStatus)) {
+      this.logger.log(`Iniciando/reanudando carga de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       this.initializeDataLoad(store).catch(error => {
         this.logger.error(`Error en carga inicial de bills para ${store}`, error);
       });
@@ -186,16 +229,18 @@ export class BillsDbService {
     const anyUpdating = syncStatuses.some(status => status.isSyncing);
     const totalRecords = syncStatuses.reduce((acc, status) => acc + status.totalRecords, 0);
 
-    // Inicializar carga para tiendas sin datos
-    syncStatuses.forEach((syncStatus, index) => {
+    // Inicializar/reanudar carga para tiendas sin datos o con carga incompleta
+    for (let index = 0; index < syncStatuses.length; index++) {
+      const syncStatus = syncStatuses[index];
       const store = physicalStores[index];
-      if ((!syncStatus.isFullyLoaded || syncStatus.totalRecords === 0) && !syncStatus.isSyncing) {
-        this.logger.log(`Iniciando carga inicial de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+      await this.clearStuckSync(syncStatus);
+      if (this.shouldTriggerLoad(syncStatus)) {
+        this.logger.log(`Iniciando/reanudando carga de bills para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
         this.initializeDataLoad(store).catch(error => {
           this.logger.error(`Error en carga inicial de bills para ${store}`, error);
         });
       }
-    });
+    }
 
     return {
       updating: anyUpdating,
@@ -413,6 +458,9 @@ export class BillsDbService {
     const syncStatus = await this.getSyncStatus(store);
     this.logger.log(`📊 syncStatus obtenido: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}`);
 
+    // Liberar una sincronización colgada para que el botón "actualizar" no quede bloqueado
+    await this.clearStuckSync(syncStatus);
+
     if (syncStatus.isSyncing) {
       this.logger.log(`Ya hay una actualización de bills en progreso para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
       return;
@@ -610,7 +658,14 @@ export class BillsDbService {
       // Retornar la bill actualizada
       return billData;
     } catch (error) {
-      this.logger.error(`Error actualizando cuenta por pagar ${billId} para ${store}`, error);
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+      this.logger.error(
+        `Error actualizando cuenta por pagar ${billId} para ${store}` +
+        (status ? ` | HTTP ${status}` : '') +
+        (data ? ` | respuesta: ${JSON.stringify(data).slice(0, 300)}` : ''),
+        error?.stack,
+      );
       throw new ServiceUnavailableException(`Error actualizando cuenta por pagar: ${error.message}`);
     }
   }
