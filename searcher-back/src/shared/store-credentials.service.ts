@@ -40,6 +40,12 @@ export class StoreCredentialsService {
       invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_PEREIRA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
       billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_PEREIRA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
     });
+
+    this.storeCredentials.set('bogota', {
+      apiKey: (this.configService.get<string>('BOGOTA_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
+      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_BOGOTA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
+      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_BOGOTA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
+    });
   }
 
   getCredentials(store: string): StoreCredentials {
@@ -47,7 +53,7 @@ export class StoreCredentialsService {
     
     if (!this.isValidStore(normalizedStore)) {
       throw new BadRequestException(
-        `Tienda inválida: ${store}. Las tiendas válidas son: pasto, medellin, armenia, pereira, todas`
+        `Tienda inválida: ${store}. Las tiendas válidas son: pasto, medellin, armenia, pereira, bogota, todas`
       );
     }
 
@@ -60,7 +66,7 @@ export class StoreCredentialsService {
   }
 
   isValidStore(store: string): boolean {
-    const validStores = ['pasto', 'medellin', 'armenia', 'pereira', 'todas'];
+    const validStores = ['pasto', 'medellin', 'armenia', 'pereira', 'bogota', 'todas'];
     return validStores.includes(store?.toLowerCase());
   }
 
@@ -70,6 +76,7 @@ export class StoreCredentialsService {
       'medellin': 'Smart Gadgets Medellín',
       'armenia': 'Smart Gadgets Armenia',
       'pereira': 'Smart Gadgets Pereira',
+      'bogota': 'Smart Gadgets Bogotá',
       'todas': 'Todas las tiendas'
     };
     
@@ -77,10 +84,10 @@ export class StoreCredentialsService {
   }
 
   getAllValidStores(): string[] {
-    return ['pasto', 'medellin', 'armenia', 'pereira', 'todas'];
+    return ['pasto', 'medellin', 'armenia', 'pereira', 'bogota', 'todas'];
   }
 
   getAllPhysicalStores(): string[] {
-    return ['pasto', 'medellin', 'armenia', 'pereira'];
+    return ['pasto', 'medellin', 'armenia', 'pereira', 'bogota'];
   }
 }

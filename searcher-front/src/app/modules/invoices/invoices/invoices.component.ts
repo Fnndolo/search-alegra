@@ -83,6 +83,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     { label: 'Smart Gadgets Medellín', value: 'medellin' },
     { label: 'Smart Gadgets Armenia', value: 'armenia' },
     { label: 'Smart Gadgets Pereira', value: 'pereira' },
+    { label: 'Smart Gadgets Bogotá', value: 'bogota' },
     { label: 'Todas las tiendas', value: 'todas' }
   ];
   selectedStore = '';
@@ -1132,6 +1133,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
           case 'medellin': bodega = 'MEDELLIN'; centroCosto = 'SEDE MEDELLIN'; break;
           case 'pereira': bodega = 'PEREIRA'; centroCosto = 'SEDE PEREIRA'; break;
           case 'armenia': bodega = 'ARMENIA'; centroCosto = 'SEDE ARMENIA'; break;
+          case 'bogota': bodega = 'BOGOTA'; centroCosto = 'SEDE BOGOTA'; break;
         }
 
         const tiendaOriginal = inv.tienda || storeKey?.toUpperCase() || '';

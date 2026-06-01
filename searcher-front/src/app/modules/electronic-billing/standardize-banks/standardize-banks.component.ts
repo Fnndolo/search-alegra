@@ -18,6 +18,7 @@ export interface BankMappingRow {
     nameArmenia: string;
     namePereira: string;
     nameMedellin: string;
+    nameBogota: string;
 }
 
 @Component({
@@ -93,7 +94,8 @@ export class StandardizeBanksComponent implements OnInit {
             namePasto: '',
             nameArmenia: '',
             namePereira: '',
-            nameMedellin: ''
+            nameMedellin: '',
+            nameBogota: ''
         }]);
     }
 
@@ -115,7 +117,7 @@ export class StandardizeBanksComponent implements OnInit {
     }
 
     async saveMappings() {
-        const invalidRows = this.mappings().filter(m => !m.kupoBankId || (!m.namePasto && !m.nameArmenia && !m.namePereira && !m.nameMedellin));
+        const invalidRows = this.mappings().filter(m => !m.kupoBankId || (!m.namePasto && !m.nameArmenia && !m.namePereira && !m.nameMedellin && !m.nameBogota));
         if (invalidRows.length > 0) {
             this.messageService.add({ severity: 'warn', summary: 'Atención', detail: 'Todas las filas deben tener un banco de Kupocell y al menos un nombre de sede origen' });
             return;

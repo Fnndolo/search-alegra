@@ -61,6 +61,7 @@
                     <th style="min-width: 200px">Nombre Sede Armenia</th>
                     <th style="min-width: 200px">Nombre Sede Pereira</th>
                     <th style="min-width: 200px">Nombre Sede Medellin</th>
+                    <th style="min-width: 200px">Nombre Sede Bogotá</th>
                     <th style="width: 80px; text-align: center">Acciones</th>
                 </tr>
             </ng-template>
@@ -88,6 +89,10 @@
                     </td>
                     <td>
                         <input pInputText type="text" [(ngModel)]="row.nameMedellin" placeholder="Ej: CERO PAY..."
+                            class="w-full" />
+                    </td>
+                    <td>
+                        <input pInputText type="text" [(ngModel)]="row.nameBogota" placeholder="Ej: CERO PAY..."
                             class="w-full" />
                     </td>
                     <td style="text-align: center">

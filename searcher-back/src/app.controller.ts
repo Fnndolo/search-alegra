@@ -46,6 +46,7 @@ export class AppController {
           medellin: process.env.MEDELLIN_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
           armenia: process.env.ARMENIA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
           pereira: process.env.PEREIRA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
+          bogota: process.env.BOGOTA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
         }
       }
     };

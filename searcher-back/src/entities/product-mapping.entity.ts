@@ -23,6 +23,9 @@ export class ProductMapping {
     @Column({ name: 'name_medellin', type: 'varchar', nullable: true })
     nameMedellin: string;
 
+    @Column({ name: 'name_bogota', type: 'varchar', nullable: true })
+    nameBogota: string;
+
     @CreateDateColumn({ name: 'created_at' })
     createdAt: Date;
 

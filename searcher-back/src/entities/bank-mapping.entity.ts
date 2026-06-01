@@ -25,6 +25,9 @@ export class BankMapping {
     @Column({ nullable: true })
     nameMedellin: string;
 
+    @Column({ nullable: true })
+    nameBogota: string;
+
     @CreateDateColumn()
     createdAt: Date;
 

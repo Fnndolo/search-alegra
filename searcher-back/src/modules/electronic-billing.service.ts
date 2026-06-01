@@ -13,6 +13,9 @@ const STORE_MAPPING: Record<string, { warehouseId: string, warehouseName: string
     'medellin': { warehouseId: '019c66ef-e6a5-70e1-90c8-9bc2c422138d', warehouseName: 'MEDELLIN', costCenterId: '2', costCenterName: 'SEDE MEDELLIN' },
     'pereira': { warehouseId: '019c66f0-70fb-7698-8a0a-a86826df31dd', warehouseName: 'PEREIRA', costCenterId: '3', costCenterName: 'SEDE PEREIRA' },
     'armenia': { warehouseId: '019c66f0-a218-719b-8af0-36b2599476d9', warehouseName: 'ARMENIA', costCenterId: '4', costCenterName: 'SEDE ARMENIA' },
+    // TODO BOGOTÁ: reemplazar estos 3 valores por los IDs reales de Alegra cuando se cree
+    // la bodega, el centro de costo y la numeración de Bogotá (ver también numberingId más abajo).
+    'bogota': { warehouseId: 'PENDIENTE_BOGOTA_WAREHOUSE_ID', warehouseName: 'BOGOTA', costCenterId: 'PENDIENTE_BOGOTA_COSTCENTER_ID', costCenterName: 'SEDE BOGOTA' },
 };
 
 @Injectable()
@@ -211,6 +214,7 @@ export class ElectronicBillingService {
                 case 'armenia': storeColumnName = 'nameArmenia'; break;
                 case 'pereira': storeColumnName = 'namePereira'; break;
                 case 'medellin': storeColumnName = 'nameMedellin'; break;
+                case 'bogota': storeColumnName = 'nameBogota'; break;
                 default:
                     throw new Error(`Tienda origen desconocida: ${params.originalStore}`);
             }
@@ -294,6 +298,9 @@ export class ElectronicBillingService {
                 case 'medellin': numberingId = '17'; break;
                 case 'armenia': numberingId = '18'; break;
                 case 'pereira': numberingId = '19'; break;
+                // TODO BOGOTÁ: poner aquí el ID de numeración de Bogotá cuando se cree en Alegra.
+                // Mientras quede vacío, no se envía numberTemplate y Alegra usa la numeración por defecto.
+                case 'bogota': numberingId = ''; break;
             }
 
             if (numberingId) {
@@ -410,6 +417,7 @@ export class ElectronicBillingService {
                     else if (warehouseLower?.includes('medellin')) originalStoreKey = 'medellin';
                     else if (warehouseLower?.includes('pereira')) originalStoreKey = 'pereira';
                     else if (warehouseLower?.includes('armenia')) originalStoreKey = 'armenia';
+                    else if (warehouseLower?.includes('bogota')) originalStoreKey = 'bogota';
                     else originalStoreKey = 'pasto';
                 }
 
@@ -652,6 +660,7 @@ export class ElectronicBillingService {
             case 'armenia': storeColumnName = 'nameArmenia'; break;
             case 'pereira': storeColumnName = 'namePereira'; break;
             case 'medellin': storeColumnName = 'nameMedellin'; break;
+            case 'bogota': storeColumnName = 'nameBogota'; break;
             default: storeColumnName = ''; break;
         }
 

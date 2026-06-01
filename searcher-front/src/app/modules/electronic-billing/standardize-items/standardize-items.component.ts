@@ -17,6 +17,7 @@ export interface ProductMappingRow {
   nameArmenia: string;
   namePereira: string;
   nameMedellin: string;
+  nameBogota: string;
 }
 
 @Component({
@@ -90,7 +91,8 @@ export class StandardizeItemsComponent implements OnInit {
       namePasto: '',
       nameArmenia: '',
       namePereira: '',
-      nameMedellin: ''
+      nameMedellin: '',
+      nameBogota: ''
     }]);
   }
 
