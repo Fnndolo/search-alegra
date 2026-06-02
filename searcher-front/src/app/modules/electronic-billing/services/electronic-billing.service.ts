@@ -136,6 +136,11 @@ export class ElectronicBillingService {
         return this.http.post(`${this.apiUrl}/electronic-billing/process-excel`, formData);
     }
 
+    /** Consulta el progreso de un import job en background (para polling). */
+    getImportJob(jobId: string): Observable<any> {
+        return this.http.get<any>(`${this.apiUrl}/electronic-billing/jobs/${jobId}`);
+    }
+
     // ─── Sync Logs ────────────────────────────────────────────────
 
     getSyncLogs(): Observable<any[]> {

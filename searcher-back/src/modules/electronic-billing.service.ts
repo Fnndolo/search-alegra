@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import axios, { AxiosInstance } from 'axios';
@@ -6,6 +6,7 @@ import { InvoiceSyncLog, SyncStatus } from './entities/invoice-sync-log.entity';
 import { ProductMapping } from '../entities/product-mapping.entity';
 import { BankMapping } from '../entities/bank-mapping.entity';
 import { KupoCatalogCache } from './entities/kupo-catalog-cache.entity';
+import { BillingImportJob, ImportJobStatus } from './entities/billing-import-job.entity';
 
 // Mapeo de tiendas origen → bodega y centro de costo en Kupocell
 const STORE_MAPPING: Record<string, { warehouseId: string, warehouseName: string, costCenterId: string, costCenterName: string }> = {
@@ -19,9 +20,16 @@ const STORE_MAPPING: Record<string, { warehouseId: string, warehouseName: string
 };
 
 @Injectable()
-export class ElectronicBillingService {
+export class ElectronicBillingService implements OnApplicationBootstrap {
     private readonly logger = new Logger(ElectronicBillingService.name);
     private readonly alegraKupoApi: AxiosInstance;
+
+    // Rate limiter global (token bucket) para respetar el límite de Alegra (~2.5 req/s) SIN
+    // tiempos muertos. Reemplaza el sleep fijo de 500ms. Lo comparten todos los workers.
+    private readonly RATE_PER_SEC = 2;
+    private readonly BUCKET_CAP = 4;
+    private bucketTokens = 4;
+    private bucketLastRefill = Date.now();
 
     constructor(
         @InjectRepository(InvoiceSyncLog)
@@ -32,6 +40,8 @@ export class ElectronicBillingService {
         private bankMappingRepo: Repository<BankMapping>,
         @InjectRepository(KupoCatalogCache)
         private catalogCacheRepo: Repository<KupoCatalogCache>,
+        @InjectRepository(BillingImportJob)
+        private jobRepo: Repository<BillingImportJob>,
     ) {
         const kupoEmail = process.env.ALEGRA_KUPO_EMAIL || 'facturacionkupocell@gmail.com';
         const kupoToken = process.env.ALEGRA_KUPO_TOKEN || '4ea4a9d5447c6ca04d00';
@@ -44,6 +54,139 @@ export class ElectronicBillingService {
                 'Accept': 'application/json'
             }
         });
+    }
+
+    // ─── Rate limiting & Background Jobs ──────────────────────────
+
+    /** Token bucket global: espera hasta tener un token (mantiene el ritmo agregado ≈ RATE_PER_SEC req/s). */
+    private async acquireToken(): Promise<void> {
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const now = Date.now();
+            const elapsedSec = (now - this.bucketLastRefill) / 1000;
+            this.bucketTokens = Math.min(this.BUCKET_CAP, this.bucketTokens + elapsedSec * this.RATE_PER_SEC);
+            this.bucketLastRefill = now;
+            if (this.bucketTokens >= 1) {
+                this.bucketTokens -= 1;
+                return;
+            }
+            const waitMs = Math.ceil(((1 - this.bucketTokens) / this.RATE_PER_SEC) * 1000);
+            await new Promise(r => setTimeout(r, waitMs));
+        }
+    }
+
+    /** POST /invoices con rate limit; reintenta SOLO ante 429 (el 429 garantiza que NO se creó nada).
+     *  No reintenta ante otros errores para no arriesgar duplicados sin Idempotency-Key nativo. */
+    private async postInvoiceWithRateLimit(payload: any, maxRetries = 4): Promise<any> {
+        for (let attempt = 1; ; attempt++) {
+            await this.acquireToken();
+            try {
+                const response = await this.alegraKupoApi.post('/invoices', payload);
+                return response.data;
+            } catch (err) {
+                const status = err.response?.status;
+                if (status === 429 && attempt < maxRetries) {
+                    const waitMs = attempt * 1500;
+                    this.logger.warn(`⏳ 429 al crear factura. Reintento ${attempt}/${maxRetries} en ${waitMs}ms...`);
+                    await new Promise(r => setTimeout(r, waitMs));
+                    continue;
+                }
+                throw err;
+            }
+        }
+    }
+
+    /** Al arrancar: asegura el lock a nivel DB (máx. 1 job PROCESSING) y reanuda jobs colgados.
+     *  La idempotencia (invoice_sync_log) hace seguro reprocesar: las ya creadas se saltan. */
+    async onApplicationBootstrap() {
+        // Lock a nivel DB con índice único PARCIAL: a lo sumo UN job PROCESSING a la vez.
+        // Se crea aquí (IF NOT EXISTS) y no vía synchronize, para evitar fragilidad de arranque.
+        try {
+            await this.jobRepo.query(
+                `CREATE UNIQUE INDEX IF NOT EXISTS idx_billing_import_jobs_one_processing ON billing_import_jobs (status) WHERE status = 'PROCESSING'`
+            );
+        } catch (err) {
+            this.logger.warn(`No se pudo crear el índice de lock de import jobs: ${err.message}`);
+        }
+
+        try {
+            const pending = await this.jobRepo.find({ where: { status: ImportJobStatus.PROCESSING } });
+            if (pending.length === 0) return;
+            this.logger.warn(`♻️ Reanudando ${pending.length} import job(s) que quedaron PROCESSING tras un restart...`);
+            for (const job of pending) {
+                const jobId = job.id;
+                // Reiniciar contadores antes de reprocesar (la idempotencia salta las ya creadas,
+                // pero el progreso debe contar de 0..N de nuevo para no pasarse de total).
+                await this.jobRepo.update(jobId, { processed: 0, successCount: 0, failCount: 0 });
+                this.runImportJob(jobId, job.invoices || []).catch(async err => {
+                    this.logger.error(`Error reanudando job ${jobId}: ${err.message}`);
+                    await this.jobRepo.update(jobId, { status: ImportJobStatus.FAILED, errorMessage: String(err?.message || err) }).catch(() => { });
+                });
+            }
+        } catch (err) {
+            this.logger.error(`Error en reanudación de jobs: ${err.message}`);
+        }
+    }
+
+    /** Crea un job (PROCESSING) y lanza el procesamiento en BACKGROUND. Devuelve al instante.
+     *  El índice único parcial garantiza que NO existan dos jobs PROCESSING a la vez (anti-duplicación). */
+    async createImportJob(invoices: any[]): Promise<BillingImportJob> {
+        let job: BillingImportJob;
+        try {
+            job = await this.jobRepo.save(this.jobRepo.create({
+                status: ImportJobStatus.PROCESSING,
+                total: invoices.length,
+                processed: 0,
+                successCount: 0,
+                failCount: 0,
+                invoices,
+            }));
+        } catch (err: any) {
+            // Violación del índice único parcial: dos subidas casi simultáneas. NO duplicar:
+            // reutilizar el job en curso.
+            if (err?.code === '23505' || err?.driverError?.code === '23505') {
+                const running = await this.getRunningImportJob();
+                if (running) {
+                    this.logger.warn(`Subida simultánea detectada; reutilizando job en curso ${running.id}`);
+                    return running;
+                }
+            }
+            throw err;
+        }
+
+        const jobId = job.id;
+        this.runImportJob(jobId, invoices).catch(async err => {
+            this.logger.error(`Error en import job ${jobId}: ${err.message}`);
+            // No dejar el job (y por tanto el lock) atascado en PROCESSING.
+            await this.jobRepo.update(jobId, { status: ImportJobStatus.FAILED, errorMessage: String(err?.message || err) }).catch(() => { });
+        });
+        return job;
+    }
+
+    /** Lock global por cuenta Kupocell: ¿hay un import en curso? (evita re-disparos/duplicación). */
+    async getRunningImportJob(): Promise<BillingImportJob | null> {
+        return this.jobRepo.findOne({ where: { status: ImportJobStatus.PROCESSING }, order: { createdAt: 'DESC' } });
+    }
+
+    async getImportJob(id: string): Promise<BillingImportJob | null> {
+        return this.jobRepo.findOne({ where: { id } });
+    }
+
+    /** Ejecuta el procesamiento del job y persiste progreso/resultado. */
+    private async runImportJob(jobId: string, invoices: any[]) {
+        try {
+            const report = await this.processMassExcelInvoices(invoices, jobId);
+            await this.jobRepo.update(jobId, {
+                status: ImportJobStatus.COMPLETED,
+                results: report.results,
+                successCount: report.successCount,
+                failCount: report.failCount,
+                processed: report.total,
+            });
+        } catch (err) {
+            this.logger.error(`Import job ${jobId} falló: ${err.message}`);
+            await this.jobRepo.update(jobId, { status: ImportJobStatus.FAILED, errorMessage: err.message });
+        }
     }
 
     // ─── Store Mapping ────────────────────────────────────────────
@@ -202,10 +345,18 @@ export class ElectronicBillingService {
         originalStore: string;
         payments?: { bankName: string, amount: number }[];
         anotation?: string;
-    }): Promise<{ success: boolean; invoiceId?: string; invoiceNumber?: string; error?: string; matchResults?: { name: string, matched: string | null }[] }> {
+    }, preloadedMappings?: ProductMapping[]): Promise<{ success: boolean; invoiceId?: string; invoiceNumber?: string; error?: string; matchResults?: { name: string, matched: string | null }[]; skipped?: boolean }> {
         try {
-            // 1. Cargar el mapeo completo de la base de datos
-            const mappings = await this.productMappingRepo.find();
+            // 0. IDEMPOTENCIA: si esta factura origen ya se creó con éxito, NO crear de nuevo (evita duplicados).
+            const idLog = `${params.originalStore}-${params.originalInvoiceId}`;
+            const already = await this.syncLogRepo.findOne({ where: { originalInvoiceId: idLog, status: SyncStatus.SUCCESS } });
+            if (already) {
+                this.logger.log(`↩️ Factura ${idLog} ya existe en Kupocell (id ${already.kupoInvoiceId}); se omite para no duplicar.`);
+                return { success: true, invoiceId: already.kupoInvoiceId, invoiceNumber: already.kupoInvoiceId, skipped: true };
+            }
+
+            // 1. Mapeo de productos (precargado en masivo; carga puntual en facturación individual)
+            const mappings = preloadedMappings || await this.productMappingRepo.find();
 
             // Determinar la columna a buscar según la tienda original
             let storeColumnName = '';
@@ -316,8 +467,7 @@ export class ElectronicBillingService {
             this.logger.log(`📝 Creando factura Kupocell para cliente ${params.clientId}, ${invoiceItems.length} items...`);
             this.logger.debug(`Payload factura: ${JSON.stringify(invoicePayload, null, 2)}`);
 
-            const response = await this.alegraKupoApi.post('/invoices', invoicePayload);
-            const created = response.data;
+            const created = await this.postInvoiceWithRateLimit(invoicePayload);
 
             // Log de éxito
             await this.syncLogRepo.save({
@@ -359,75 +509,81 @@ export class ElectronicBillingService {
 
     // ─── Mass Excel Processing ────────────────────────────────────
 
-    async processMassExcelInvoices(invoices: any[]) {
-        const results: { invoiceId: any; success: boolean; error: string; paymentErrors?: string[] }[] = [];
-        this.logger.log(`🚀 Iniciando facturación masiva de ${invoices.length} facturas desde Excel (SECUENCIAL para evitar colisión de numeración)...`);
+    async processMassExcelInvoices(invoices: any[], jobId?: string) {
+        const results: { invoiceId: any; success: boolean; error: string; paymentErrors?: string[]; skipped?: boolean }[] = [];
+        this.logger.log(`🚀 Facturación masiva de ${invoices.length} facturas (paralelo por tienda + rate-limit global, idempotente)...`);
 
-        // Precargar TODOS los catálogos UNA SOLA VEZ antes del bucle
-        const [kupoWarehouses, kupoCostCenters, kupoBanks, bankMappings] = await Promise.all([
+        // Precargar catálogos Y mapeos de productos UNA SOLA VEZ (antes los product mappings se cargaban POR factura)
+        const [kupoWarehouses, kupoCostCenters, kupoBanks, bankMappings, productMappings] = await Promise.all([
             this.getWarehouses(),
             this.getCostCenters(),
             this.getKupoBanks(),
-            this.getBankMappings()
+            this.getBankMappings(),
+            this.productMappingRepo.find(),
         ]);
 
-        this.logger.log(`📦 Catálogos precargados: ${kupoWarehouses.length} bodegas, ${kupoCostCenters.length} centros, ${kupoBanks.length} bancos, ${bankMappings.length} mapeos bancarios`);
+        this.logger.log(`📦 Catálogos: ${kupoWarehouses.length} bodegas, ${kupoCostCenters.length} centros, ${kupoBanks.length} bancos, ${bankMappings.length} mapeos banco, ${productMappings.length} mapeos producto`);
 
         const findWarehouseId = (name: string): string => {
             if (!name) return '';
             const found = kupoWarehouses.find(w => w.name.trim().toLowerCase() === name.toLowerCase().trim());
             return found ? found.id : '';
         };
-
         const findCostCenterId = (name: string): string => {
             if (!name) return '';
             const found = kupoCostCenters.find(cc => cc.name.trim().toLowerCase() === name.toLowerCase().trim());
             return found ? found.id : '';
         };
 
+        // Cache de clientes por lote: evita GET /contacts repetido para el mismo cliente.
+        const clientCache = new Map<string, { id: string; name: string; isNew: boolean }>();
+
         let successCount = 0;
         let failCount = 0;
 
-        // PROCESAMIENTO SECUENCIAL: una factura a la vez para evitar colisión de números
-        for (let i = 0; i < invoices.length; i++) {
-            const inv = invoices[i];
-            let result: { invoiceId: any; success: boolean; error: string; paymentErrors?: string[] } = { 
-                invoiceId: inv.originalInvoiceId, success: false, error: '' 
+        const resolveStoreKey = (inv: any): string => {
+            let key = inv.originalStore?.toLowerCase().trim();
+            if (!key) {
+                const wl = inv.warehouseName?.toLowerCase();
+                if (wl?.includes('pasto')) key = 'pasto';
+                else if (wl?.includes('medellin')) key = 'medellin';
+                else if (wl?.includes('pereira')) key = 'pereira';
+                else if (wl?.includes('armenia')) key = 'armenia';
+                else if (wl?.includes('bogota')) key = 'bogota';
+                else key = 'pasto';
+            }
+            return key;
+        };
+
+        // Procesa UNA factura: cliente (cacheado) → crear factura (idempotente) → pagos.
+        const processOne = async (inv: any) => {
+            const result: { invoiceId: any; success: boolean; error: string; paymentErrors?: string[]; skipped?: boolean } = {
+                invoiceId: inv.originalInvoiceId, success: false, error: ''
             };
-
             try {
-                this.logger.log(`📄 [${i + 1}/${invoices.length}] Procesando factura ${inv.originalInvoiceId}...`);
+                const originalStoreKey = resolveStoreKey(inv);
 
-                // Obtener cliente
-                const client = await this.findOrCreateClient({
-                    name: String(inv.clientName || 'Cliente Mostrador'),
-                    identification: inv.clientIdentification ? String(inv.clientIdentification) : '',
-                    email: inv.clientEmail,
-                    phone: inv.clientPhone,
-                    address: inv.clientAddress,
-                    city: inv.clientCity,
-                    department: inv.clientDepartment
-                });
-
-                // Tienda original (para resolución de numeración)
-                let originalStoreKey = inv.originalStore?.toLowerCase().trim();
-                if (!originalStoreKey) {
-                    const warehouseLower = inv.warehouseName?.toLowerCase();
-                    if (warehouseLower?.includes('pasto')) originalStoreKey = 'pasto';
-                    else if (warehouseLower?.includes('medellin')) originalStoreKey = 'medellin';
-                    else if (warehouseLower?.includes('pereira')) originalStoreKey = 'pereira';
-                    else if (warehouseLower?.includes('armenia')) originalStoreKey = 'armenia';
-                    else if (warehouseLower?.includes('bogota')) originalStoreKey = 'bogota';
-                    else originalStoreKey = 'pasto';
+                // Cliente con cache por identificación (los "Cliente Mostrador" sin id NO se cachean)
+                const idKey = inv.clientIdentification ? String(inv.clientIdentification).trim() : '';
+                let client = idKey ? clientCache.get(idKey) : undefined;
+                if (!client) {
+                    client = await this.findOrCreateClient({
+                        name: String(inv.clientName || 'Cliente Mostrador'),
+                        identification: idKey,
+                        email: inv.clientEmail,
+                        phone: inv.clientPhone,
+                        address: inv.clientAddress,
+                        city: inv.clientCity,
+                        department: inv.clientDepartment
+                    });
+                    if (idKey) clientCache.set(idKey, client);
                 }
 
                 const storeMapping = this.getStoreMapping(originalStoreKey);
-
-                // Prioridad: nombres del Excel > mapeo por tienda
                 const finalWarehouseId = findWarehouseId(inv.warehouseName) || storeMapping?.warehouseId || '';
                 const finalCostCenterId = findCostCenterId(inv.costCenterName) || storeMapping?.costCenterId || '';
 
-                // Crear factura (SIN pagos, los procesamos aparte con mejor control)
+                // Crear factura (sin pagos aquí; los procesamos aparte). Mapeos precargados.
                 const response = await this.createKupocellInvoice({
                     clientId: client.id,
                     items: inv.items,
@@ -437,29 +593,25 @@ export class ElectronicBillingService {
                     date: inv.date || new Date().toISOString().split('T')[0],
                     originalInvoiceId: inv.originalInvoiceId,
                     originalStore: originalStoreKey,
-                    payments: undefined,  // NO pasar pagos aquí, los procesamos manualmente abajo
+                    payments: undefined,
                     anotation: inv.anotation,
                     observations: inv.observations,
                     seller: inv.observations?.replace('Vendedor: ', '') || undefined,
-                });
+                }, productMappings);
 
                 if (response.success) {
                     result.success = true;
                     successCount++;
-
-                    // Ahora procesar los pagos de forma controlada con los catálogos precargados
-                    if (inv.payments && inv.payments.length > 0 && response.invoiceId) {
+                    if (response.skipped) {
+                        // Ya existía: no reprocesar pagos (ya se hicieron en su creación original).
+                        result.skipped = true;
+                    } else if (inv.payments && inv.payments.length > 0 && response.invoiceId) {
                         const paymentErrors = await this.processInvoicePaymentsWithPreloadedData(
-                            inv.payments,
-                            response.invoiceId,
+                            inv.payments, response.invoiceId,
                             inv.date || new Date().toISOString().split('T')[0],
-                            originalStoreKey,
-                            kupoBanks,
-                            bankMappings
+                            originalStoreKey, kupoBanks, bankMappings
                         );
-                        if (paymentErrors.length > 0) {
-                            result.paymentErrors = paymentErrors;
-                        }
+                        if (paymentErrors.length > 0) result.paymentErrors = paymentErrors;
                     }
                 } else {
                     result.error = response.error || 'Error desconocido';
@@ -469,31 +621,38 @@ export class ElectronicBillingService {
                 this.logger.error(`Error procesando factura masiva ${inv.originalInvoiceId}: ${error.message}`);
                 result.error = error.message;
                 failCount++;
-
-                const logIdentifier = inv.originalInvoiceId.includes('-') ? inv.originalInvoiceId : `${inv.originalStore || 'desconocida'}-${inv.originalInvoiceId}`;
-                await this.syncLogRepo.save({
-                    originalInvoiceId: logIdentifier,
-                    status: SyncStatus.FAILED,
-                    errorMessage: error.message,
-                });
+                const logId = String(inv.originalInvoiceId).includes('-') ? inv.originalInvoiceId : `${inv.originalStore || 'desconocida'}-${inv.originalInvoiceId}`;
+                await this.syncLogRepo.save({ originalInvoiceId: logId, status: SyncStatus.FAILED, errorMessage: error.message });
             }
-
             results.push(result);
-
-            // Respiro de 500ms entre cada factura para dar tiempo a Alegra
-            if (i < invoices.length - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+            // Progreso ATÓMICO en DB para el polling del front (processed + success/fail en vivo)
+            if (jobId) {
+                await this.jobRepo.increment({ id: jobId }, 'processed', 1);
+                await this.jobRepo.increment({ id: jobId }, result.success ? 'successCount' : 'failCount', 1);
             }
-        }
-
-        this.logger.log(`✅ Facturación Masiva Completada: ${successCount} éxitos, ${failCount} errores`);
-        return {
-            success: true,
-            total: invoices.length,
-            successCount,
-            failCount,
-            results
         };
+
+        // Particionar por tienda (numberTemplate): tiendas DISTINTAS en paralelo; misma tienda
+        // en SERIE (evita la colisión de consecutivo que motivó el sleep). El token bucket global
+        // mantiene el ritmo agregado bajo el límite de Alegra.
+        const partitions = new Map<string, any[]>();
+        for (const inv of invoices) {
+            const key = resolveStoreKey(inv);
+            if (!partitions.has(key)) partitions.set(key, []);
+            partitions.get(key)!.push(inv);
+        }
+        this.logger.log(`🧩 ${partitions.size} partición(es) por tienda: ${[...partitions.entries()].map(([k, v]) => `${k}:${v.length}`).join(', ')}`);
+
+        await Promise.all([...partitions.values()].map(async (list) => {
+            for (const inv of list) {
+                await processOne(inv);
+            }
+        }));
+
+        // Los contadores en DB ya se actualizaron atómicamente por factura (increment).
+        // runImportJob hará el SET final autoritativo de status/results/contadores.
+        this.logger.log(`✅ Facturación Masiva Completada: ${successCount} éxitos, ${failCount} errores`);
+        return { success: true, total: invoices.length, successCount, failCount, results };
     }
 
     // ─── Sync Logs Query ──────────────────────────────────────────
@@ -776,7 +935,8 @@ export class ElectronicBillingService {
             try {
                 this.logger.log(`💳 Intento ${attempt}/${maxRetries}: Registrando pago de $${params.amount} → Factura ${params.invoiceId}, Banco ${params.bankId}`);
                 this.logger.debug(`    Payload: ${JSON.stringify(payload)}`);
-                
+
+                await this.acquireToken();
                 const response = await this.alegraKupoApi.post('/payments', payload);
                 this.logger.log(`✅ Pago de $${params.amount} registrado con éxito (ID Pago: ${response.data.id}) en intento ${attempt}`);
                 return response.data;

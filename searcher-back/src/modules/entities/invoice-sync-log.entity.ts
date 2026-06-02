@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
 export enum SyncStatus {
     SUCCESS = 'SUCCESS',
@@ -6,7 +6,11 @@ export enum SyncStatus {
     PENDING = 'PENDING'
 }
 
+// Índice (NO único) para acelerar la verificación de idempotencia por originalInvoiceId.
+// No se usa UNIQUE porque la columna ya tiene duplicados históricos (FAILED+SUCCESS y
+// duplicados del bug previo) y synchronize:true fallaría al crear el índice único.
 @Entity('invoice_sync_log')
+@Index(['originalInvoiceId'])
 export class InvoiceSyncLog {
     @PrimaryGeneratedColumn('uuid')
     id: string;

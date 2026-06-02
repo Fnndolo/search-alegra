@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Put, Body, Query, Logger, BadRequestException, UploadedFile, UseInterceptors, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Put, Body, Query, Param, Logger, BadRequestException, UploadedFile, UseInterceptors, UseGuards } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ElectronicBillingService } from './electronic-billing.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -8,6 +8,7 @@ import { UserRole } from '../entities/user.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Not, IsNull, In } from 'typeorm';
 import { Invoice } from '../entities/invoice.entity';
+import { ImportJobStatus } from './entities/billing-import-job.entity';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
 import * as xlsx from 'xlsx';
 import axios from 'axios';
@@ -658,18 +659,57 @@ export class ElectronicBillingController {
             }
 
             const invoicesToProcess = Array.from(groupedInvoices.values());
+            this.logger.log(`Excel agrupado en ${invoicesToProcess.length} facturas únicas.`);
 
-            this.logger.log(`Excel agrupad en ${invoicesToProcess.length} facturas únicas. Iniciando procesamiento masivo...`);
+            // LOCK: si ya hay una importación en curso, no lanzar otra (evita la duplicación
+            // por re-subida/doble-click mientras la primera sigue procesando).
+            const running = await this.billingService.getRunningImportJob();
+            if (running) {
+                this.logger.warn(`⛔ Importación ya en curso (job ${running.id}, ${running.processed}/${running.total}). Se rechaza la nueva subida.`);
+                return {
+                    jobId: running.id,
+                    total: running.total,
+                    processed: running.processed,
+                    alreadyRunning: true,
+                    message: `Ya hay una importación en curso (${running.processed}/${running.total}). Espera a que termine antes de subir otra.`,
+                };
+            }
 
-            // Ejecutar el procesamiento masivo a través de nuestro servicio
-            // Se puede hacer "await" aquí sin que explote, porque controlamos la concurrencia en la Capa de Servicio.
-            const report = await this.billingService.processMassExcelInvoices(invoicesToProcess);
-
-            return report;
+            // Crear job y procesar en BACKGROUND: respondemos al instante con el jobId (sin importar N).
+            const job = await this.billingService.createImportJob(invoicesToProcess);
+            this.logger.log(`🧾 Import job ${job.id} iniciado en background con ${job.total} facturas.`);
+            return {
+                jobId: job.id,
+                total: job.total,
+                message: `Importación iniciada en segundo plano (${job.total} facturas). Sigue el progreso con el jobId.`,
+            };
         } catch (err) {
             this.logger.error('Error parsing Excel file', err.stack);
             throw new BadRequestException(`Error procesando Excel: ${err.message}`);
         }
+    }
+
+    /**
+     * GET /electronic-billing/jobs/:id
+     * Progreso de una importación masiva en background (para polling del front).
+     */
+    @Get('jobs/:id')
+    async getImportJobProgress(@Param('id') id: string) {
+        const job = await this.billingService.getImportJob(id);
+        if (!job) {
+            throw new BadRequestException('Job de importación no encontrado');
+        }
+        return {
+            id: job.id,
+            status: job.status,
+            total: job.total,
+            processed: job.processed,
+            successCount: job.successCount,
+            failCount: job.failCount,
+            // Solo devolver el detalle por factura cuando terminó (puede ser grande)
+            results: job.status === ImportJobStatus.COMPLETED ? job.results : undefined,
+            errorMessage: job.errorMessage,
+        };
     }
 
     @Get('sync-logs')

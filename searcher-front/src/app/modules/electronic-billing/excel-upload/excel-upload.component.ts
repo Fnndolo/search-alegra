@@ -22,9 +22,12 @@ export class ExcelUploadComponent {
   parsedData = signal<any[]>([]);
   fileName = signal<string | null>(null);
   isUploading = signal<boolean>(false);
+  progressText = signal<string>('');
 
   private selectedFile: File | null = null;
   private billingService = inject(ElectronicBillingService);
+  private pollErrors = 0;
+  private readonly MAX_POLL_ERRORS = 5;
 
   constructor(private messageService: MessageService) { }
 
@@ -100,21 +103,75 @@ export class ExcelUploadComponent {
     }
 
     this.isUploading.set(true);
-    this.messageService.add({ severity: 'info', summary: 'Procesando...', detail: 'Enviando lote masivo al backend para facturación.' });
+    this.progressText.set('');
+    this.messageService.add({ severity: 'info', summary: 'Procesando...', detail: 'Enviando lote al backend; se procesa en segundo plano.' });
 
     this.billingService.uploadExcelForMassBilling(this.selectedFile).subscribe({
       next: (response) => {
-        this.isUploading.set(false);
-        this.messageService.add({
-          severity: 'success',
-          summary: 'Facturación Masiva',
-          detail: `Proceso completado. Éxitos: ${response.successCount}, Fallos: ${response.failCount}`
-        });
-        this.clearData();
+        if (response?.alreadyRunning) {
+          this.messageService.add({ severity: 'warn', summary: 'Ya en curso', detail: response.message });
+        }
+        if (response?.jobId) {
+          // Procesamiento en background: seguimos el progreso por polling.
+          this.pollJob(response.jobId);
+        } else {
+          // Compatibilidad con la respuesta antigua (reporte directo)
+          this.isUploading.set(false);
+          this.progressText.set('');
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Facturación Masiva',
+            detail: `Proceso completado. Éxitos: ${response.successCount}, Fallos: ${response.failCount}`
+          });
+          this.clearData();
+        }
       },
       error: (err) => {
         this.isUploading.set(false);
+        this.progressText.set('');
         this.messageService.add({ severity: 'error', summary: 'Error', detail: err.error?.message || 'Error procesando la facturación masiva' });
+      }
+    });
+  }
+
+  /** Consulta el progreso del job cada 2s hasta que termine. */
+  private pollJob(jobId: string) {
+    this.billingService.getImportJob(jobId).subscribe({
+      next: (job) => {
+        this.pollErrors = 0;
+        this.progressText.set(`${job.processed}/${job.total}`);
+        if (job.status === 'PROCESSING') {
+          setTimeout(() => this.pollJob(jobId), 2000);
+        } else if (job.status === 'COMPLETED') {
+          this.isUploading.set(false);
+          this.progressText.set('');
+          this.messageService.add({
+            severity: 'success',
+            summary: 'Facturación Masiva',
+            detail: `Completado. Éxitos: ${job.successCount}, Fallos: ${job.failCount}`
+          });
+          this.clearData();
+        } else { // FAILED
+          this.isUploading.set(false);
+          this.progressText.set('');
+          this.messageService.add({ severity: 'error', summary: 'Error', detail: job.errorMessage || 'La importación falló' });
+        }
+      },
+      error: () => {
+        // Error transitorio consultando progreso: reintentar hasta un tope, luego soltar el botón.
+        this.pollErrors++;
+        if (this.pollErrors >= this.MAX_POLL_ERRORS) {
+          this.pollErrors = 0;
+          this.isUploading.set(false);
+          this.progressText.set('');
+          this.messageService.add({
+            severity: 'warn',
+            summary: 'Sin conexión con el progreso',
+            detail: 'No se pudo consultar el avance. La importación puede seguir ejecutándose en el servidor; vuelve a intentar más tarde.'
+          });
+          return;
+        }
+        setTimeout(() => this.pollJob(jobId), 3000);
       }
     });
   }
@@ -124,5 +181,6 @@ export class ExcelUploadComponent {
     this.fileName.set(null);
     this.selectedFile = null;
     this.isUploading.set(false);
+    this.progressText.set('');
   }
 }

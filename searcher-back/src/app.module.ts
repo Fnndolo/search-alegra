@@ -20,6 +20,7 @@ import { InvoiceSyncLog } from './modules/entities/invoice-sync-log.entity';
 import { ProductMapping } from './entities/product-mapping.entity';
 import { BankMapping } from './entities/bank-mapping.entity';
 import { KupoCatalogCache } from './modules/entities/kupo-catalog-cache.entity';
+import { BillingImportJob } from './modules/entities/billing-import-job.entity';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 
@@ -43,6 +44,7 @@ import { UsersModule } from './users/users.module';
         ProductMapping,
         BankMapping,
         KupoCatalogCache,
+        BillingImportJob,
         User
       ],
       synchronize: true, // Solo para desarrollo
