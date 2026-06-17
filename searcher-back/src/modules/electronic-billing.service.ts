@@ -772,11 +772,17 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
         return this.productMappingRepo.find();
     }
 
-    async saveProductMappings(mappings: Partial<ProductMapping>[]) {
-        await this.productMappingRepo.clear();
-
-        const entities = mappings.map(m => this.productMappingRepo.create(m));
-        return this.productMappingRepo.save(entities);
+    /** Guardado INCREMENTAL: upsert por id (con id -> UPDATE, sin id -> INSERT) + borrar los eliminados.
+     *  Ya NO hace clear()+reinsertar todo (eso reenviaba/reescribía toda la tabla en cada guardado). */
+    async saveProductMappings(upserts: Partial<ProductMapping>[], deletedIds: string[] = []) {
+        if (deletedIds && deletedIds.length > 0) {
+            await this.productMappingRepo.delete(deletedIds);
+        }
+        if (upserts && upserts.length > 0) {
+            const entities = upserts.map(m => this.productMappingRepo.create(m));
+            await this.productMappingRepo.save(entities);
+        }
+        return { ok: true, upserted: upserts?.length || 0, deleted: deletedIds?.length || 0 };
     }
 
     // ─── Bank Mappings CRUD ───────────────────────────────────────
@@ -785,10 +791,16 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
         return this.bankMappingRepo.find();
     }
 
-    async saveBankMappings(mappings: Partial<BankMapping>[]) {
-        await this.bankMappingRepo.clear();
-        const entities = mappings.map(m => this.bankMappingRepo.create(m));
-        return this.bankMappingRepo.save(entities);
+    /** Guardado INCREMENTAL de mapeos de bancos: upsert por id + borrar los eliminados (sin clear()). */
+    async saveBankMappings(upserts: Partial<BankMapping>[], deletedIds: string[] = []) {
+        if (deletedIds && deletedIds.length > 0) {
+            await this.bankMappingRepo.delete(deletedIds);
+        }
+        if (upserts && upserts.length > 0) {
+            const entities = upserts.map(m => this.bankMappingRepo.create(m));
+            await this.bankMappingRepo.save(entities);
+        }
+        return { ok: true, upserted: upserts?.length || 0, deleted: deletedIds?.length || 0 };
     }
 
     async getKupocellBanks(forceSync = false) {

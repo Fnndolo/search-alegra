@@ -110,8 +110,9 @@ export class ElectronicBillingService {
         return this.http.get<any[]>(`${this.apiUrl}/electronic-billing/product-mappings`);
     }
 
-    saveProductMappings(mappings: any[]): Observable<any> {
-        return this.http.put(`${this.apiUrl}/electronic-billing/product-mappings`, { mappings });
+    /** Guardado incremental: solo filas nuevas/modificadas (upserts) + ids eliminados. */
+    saveProductMappings(upserts: any[], deletedIds: string[] = []): Observable<any> {
+        return this.http.put(`${this.apiUrl}/electronic-billing/product-mappings`, { upserts, deletedIds });
     }
 
     // ─── Bank Mappings ────────────────────────────────────────────
@@ -124,8 +125,9 @@ export class ElectronicBillingService {
         return this.http.get<any[]>(`${this.apiUrl}/electronic-billing/bank-mappings`);
     }
 
-    saveBankMappings(mappings: any[]): Observable<any> {
-        return this.http.put(`${this.apiUrl}/electronic-billing/bank-mappings`, { mappings });
+    /** Guardado incremental: solo filas nuevas/modificadas (upserts) + ids eliminados. */
+    saveBankMappings(upserts: any[], deletedIds: string[] = []): Observable<any> {
+        return this.http.put(`${this.apiUrl}/electronic-billing/bank-mappings`, { upserts, deletedIds });
     }
 
     // ─── Mass Billing Excel Upload ────────────────────────────────

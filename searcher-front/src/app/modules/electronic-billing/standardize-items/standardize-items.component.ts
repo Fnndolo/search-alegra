@@ -44,6 +44,9 @@ export class StandardizeItemsComponent implements OnInit {
   loadingMappings = signal<boolean>(false);
   saving = signal<boolean>(false);
 
+  // Snapshot de lo cargado, para guardar SOLO el diff (nuevo/modificado/eliminado).
+  private originalSnapshot = new Map<string, string>();
+
   constructor(
     private billingService: ElectronicBillingService,
     private messageService: MessageService
@@ -69,6 +72,7 @@ export class StandardizeItemsComponent implements OnInit {
     try {
       const mappingsRes = await this.billingService.getProductMappings().toPromise();
       this.mappings.set(mappingsRes || []);
+      this.snapshotMappings(mappingsRes || []);
     } catch (error) {
       this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los mapeos guardados' });
     } finally {
@@ -113,20 +117,45 @@ export class StandardizeItemsComponent implements OnInit {
     }
   }
 
+  private serializeRow(r: ProductMappingRow): string {
+    return JSON.stringify({
+      kupoProductId: r.kupoProductId, kupoProductName: r.kupoProductName,
+      namePasto: r.namePasto, nameArmenia: r.nameArmenia, namePereira: r.namePereira,
+      nameMedellin: r.nameMedellin, nameBogota: r.nameBogota,
+    });
+  }
+
+  private snapshotMappings(rows: ProductMappingRow[]) {
+    this.originalSnapshot.clear();
+    for (const r of rows) if (r.id) this.originalSnapshot.set(r.id, this.serializeRow(r));
+  }
+
   async saveMappings() {
-    const invalidRows = this.mappings().filter(m => !m.kupoProductId);
+    const rows = this.mappings();
+    // Diff: solo filas nuevas (sin id) o modificadas respecto a lo cargado.
+    const upserts = rows.filter(r => !r.id || this.originalSnapshot.get(r.id) !== this.serializeRow(r));
+    const currentIds = new Set(rows.filter(r => r.id).map(r => r.id as string));
+    const deletedIds = [...this.originalSnapshot.keys()].filter(id => !currentIds.has(id));
+
+    // Validar SOLO las filas que se van a guardar.
+    const invalidRows = upserts.filter(m => !m.kupoProductId);
     if (invalidRows.length > 0) {
-      this.messageService.add({ severity: 'warn', summary: 'Atención', detail: 'Todas las filas deben tener un producto de Kupocell seleccionado' });
+      this.messageService.add({ severity: 'warn', summary: 'Atención', detail: 'Las filas a guardar deben tener un producto de Kupocell seleccionado' });
+      return;
+    }
+    if (upserts.length === 0 && deletedIds.length === 0) {
+      this.messageService.add({ severity: 'info', summary: 'Sin cambios', detail: 'No hay cambios para guardar' });
       return;
     }
 
     this.saving.set(true);
     try {
-      await this.billingService.saveProductMappings(this.mappings()).toPromise();
-      this.messageService.add({ severity: 'success', summary: 'Guardado', detail: 'Los mapeos se han guardado correctamente' });
+      await this.billingService.saveProductMappings(upserts, deletedIds).toPromise();
+      this.messageService.add({ severity: 'success', summary: 'Guardado', detail: `Cambios guardados (${upserts.length} guardado(s), ${deletedIds.length} eliminado(s))` });
 
       const mappingsRes = await this.billingService.getProductMappings().toPromise();
       this.mappings.set(mappingsRes || []);
+      this.snapshotMappings(mappingsRes || []);
     } catch (error) {
       this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron guardar los mapeos' });
     } finally {

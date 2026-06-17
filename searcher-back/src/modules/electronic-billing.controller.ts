@@ -489,12 +489,16 @@ export class ElectronicBillingController {
     }
 
     @Put('product-mappings')
-    async saveProductMappings(@Body() payload: { mappings: any[] }) {
-        if (!payload || !Array.isArray(payload.mappings)) {
+    async saveProductMappings(@Body() payload: { upserts?: any[], deletedIds?: string[], mappings?: any[] }) {
+        // Guardado INCREMENTAL: solo lo nuevo/modificado (upserts) + ids eliminados.
+        // Compat: si llega 'mappings' (formato viejo), se trata como upserts.
+        const upserts = payload?.upserts ?? payload?.mappings;
+        const deletedIds = payload?.deletedIds ?? [];
+        if (!Array.isArray(upserts) || !Array.isArray(deletedIds)) {
             throw new BadRequestException('Formato inválido para mappings');
         }
-        await this.billingService.saveProductMappings(payload.mappings);
-        return { success: true, message: 'Mapeos guardados exitosamente' };
+        const res = await this.billingService.saveProductMappings(upserts, deletedIds);
+        return { success: true, ...res };
     }
 
     @Get('kupo-products')
@@ -510,12 +514,15 @@ export class ElectronicBillingController {
     }
 
     @Put('bank-mappings')
-    async saveBankMappings(@Body() payload: { mappings: any[] }) {
-        if (!payload || !Array.isArray(payload.mappings)) {
+    async saveBankMappings(@Body() payload: { upserts?: any[], deletedIds?: string[], mappings?: any[] }) {
+        // Guardado INCREMENTAL (igual que product-mappings).
+        const upserts = payload?.upserts ?? payload?.mappings;
+        const deletedIds = payload?.deletedIds ?? [];
+        if (!Array.isArray(upserts) || !Array.isArray(deletedIds)) {
             throw new BadRequestException('Formato inválido para mappings de bancos');
         }
-        await this.billingService.saveBankMappings(payload.mappings);
-        return { success: true, message: 'Mapeos de bancos guardados exitosamente' };
+        const res = await this.billingService.saveBankMappings(upserts, deletedIds);
+        return { success: true, ...res };
     }
 
     @Get('kupo-banks')
