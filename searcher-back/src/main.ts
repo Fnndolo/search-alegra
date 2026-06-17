@@ -1,9 +1,15 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { json, urlencoded } from 'express';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  
+  // Desactivamos el body-parser por defecto (límite 100kb) y lo reconfiguramos con un límite
+  // mayor: el guardado de mapeos (Estandarizar Items/Bancos) envía toda la tabla en un solo
+  // JSON y superaba los 100kb -> 413 "request entity too large".
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  app.use(json({ limit: '25mb' }));
+  app.use(urlencoded({ extended: true, limit: '25mb' }));
+
   console.log('🔧 Configurando CORS...');
   
   // Configuración de CORS más permisiva
