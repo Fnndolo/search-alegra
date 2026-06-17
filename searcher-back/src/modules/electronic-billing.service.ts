@@ -778,11 +778,14 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
         if (deletedIds && deletedIds.length > 0) {
             await this.productMappingRepo.delete(deletedIds);
         }
+        let saved: ProductMapping[] = [];
         if (upserts && upserts.length > 0) {
             const entities = upserts.map(m => this.productMappingRepo.create(m));
-            await this.productMappingRepo.save(entities);
+            saved = await this.productMappingRepo.save(entities);
         }
-        return { ok: true, upserted: upserts?.length || 0, deleted: deletedIds?.length || 0 };
+        // Devolvemos las filas guardadas (con sus ids) EN EL MISMO ORDEN que los upserts,
+        // para que el front asigne los ids nuevos en sitio sin recargar toda la tabla.
+        return { ok: true, saved, deleted: deletedIds?.length || 0 };
     }
 
     // ─── Bank Mappings CRUD ───────────────────────────────────────
@@ -796,11 +799,12 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
         if (deletedIds && deletedIds.length > 0) {
             await this.bankMappingRepo.delete(deletedIds);
         }
+        let saved: BankMapping[] = [];
         if (upserts && upserts.length > 0) {
             const entities = upserts.map(m => this.bankMappingRepo.create(m));
-            await this.bankMappingRepo.save(entities);
+            saved = await this.bankMappingRepo.save(entities);
         }
-        return { ok: true, upserted: upserts?.length || 0, deleted: deletedIds?.length || 0 };
+        return { ok: true, saved, deleted: deletedIds?.length || 0 };
     }
 
     async getKupocellBanks(forceSync = false) {

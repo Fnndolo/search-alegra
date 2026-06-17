@@ -150,12 +150,15 @@ export class StandardizeItemsComponent implements OnInit {
 
     this.saving.set(true);
     try {
-      await this.billingService.saveProductMappings(upserts, deletedIds).toPromise();
+      const res: any = await this.billingService.saveProductMappings(upserts, deletedIds).toPromise();
+      // Asignar EN SITIO los ids generados a las filas nuevas (mismo orden que upserts), SIN recargar
+      // ni reemplazar el arreglo -> no se re-renderiza toda la tabla -> no se traba al guardar.
+      const saved = res?.saved || [];
+      for (let i = 0; i < upserts.length; i++) {
+        if (saved[i]?.id) upserts[i].id = saved[i].id;
+      }
+      this.snapshotMappings(this.mappings());
       this.messageService.add({ severity: 'success', summary: 'Guardado', detail: `Cambios guardados (${upserts.length} guardado(s), ${deletedIds.length} eliminado(s))` });
-
-      const mappingsRes = await this.billingService.getProductMappings().toPromise();
-      this.mappings.set(mappingsRes || []);
-      this.snapshotMappings(mappingsRes || []);
     } catch (error) {
       this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron guardar los mapeos' });
     } finally {
