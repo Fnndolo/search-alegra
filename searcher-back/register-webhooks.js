@@ -1,20 +1,26 @@
 // Script para registrar webhooks manualmente en Alegra
 const https = require('https');
+const { getStoreApiKey, getWebhookBaseUrl } = require('./config');
 
 // Configuración
-const WEBHOOK_BASE_URL = 'search-alegra-production-5eed.up.railway.app/webhooks';
+const WEBHOOK_BASE_URL = getWebhookBaseUrl();
 
 const stores = {
-  pasto: 'a3Vwb2NlbGwuc2dwYXN0b0BnbWFpbC5jb206MzQ4NGE4NDA3MTViODQwMmVjNTc=',
-  medellin: 'a3Vwb2NlbGwubWVkZWxsaW5AZ21haWwuY29tOjdiMWZhMjJmYjNjMGJhNGExMGNh',
-  armenia: 'a3Vwb2NlbGwuYXJtZW5pYUBnbWFpbC5jb206ZmI1OTBlODEwZmEwZDNjNzZhZGM=',
-  pereira: 'a3Vwb2NlbGwucGVyZWlyYUBnbWFpbC5jb206MjJiNGVhZTQ5ZDlhN2I0ZjYzNDQ='
+  pasto: getStoreApiKey('pasto'),
+  medellin: getStoreApiKey('medellin'),
+  armenia: getStoreApiKey('armenia'),
+  pereira: getStoreApiKey('pereira')
 };
 
 const events = ['new-invoice', 'edit-invoice', 'new-bill', 'edit-bill'];
 
 function registerWebhook(store, apiKeyBase64, event) {
   return new Promise((resolve, reject) => {
+    if (!WEBHOOK_BASE_URL) {
+      reject(new Error('WEBHOOK_BASE_URL is not configured'));
+      return;
+    }
+
     const data = JSON.stringify({
       event: event,
       url: `${WEBHOOK_BASE_URL}/${store}`

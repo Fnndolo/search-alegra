@@ -1,22 +1,23 @@
 const axios = require('axios');
 const { Client } = require('pg');
+const { alegraBaseUrl, getDatabaseConnectionString, getStoreApiKey } = require('./config');
 
 // IDs faltantes de facturas de Pasto
 const MISSING_IDS = [1];
 
 const STORE = 'pasto';
-const API_KEY = 'smartventas016@gmail.com:3484a840715b8402ec57';
-const ALEGRA_API_URL = 'https://api.alegra.com/api/v1';
+const API_KEY = getStoreApiKey(STORE);
+const ALEGRA_API_URL = alegraBaseUrl;
 
 // Configuración de base de datos
 const dbClient = new Client({
-  host: 'metro.proxy.rlwy.net',
-  port: 34115,
-  user: 'postgres',
-  password: 'PAGJWxTCJoOBrtehUMWNmdmkoyzMEqSz',
-  database: 'railway',
-  ssl: false
+  connectionString: getDatabaseConnectionString(),
+  ssl: { rejectUnauthorized: false }
 });
+
+if (!API_KEY) {
+  throw new Error(`Missing API key for store ${STORE}`);
+}
 
 // Función para obtener una factura de Alegra
 async function fetchInvoiceFromAlegra(invoiceId) {

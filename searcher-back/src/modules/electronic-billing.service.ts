@@ -7,6 +7,7 @@ import { ProductMapping } from '../entities/product-mapping.entity';
 import { BankMapping } from '../entities/bank-mapping.entity';
 import { KupoCatalogCache } from './entities/kupo-catalog-cache.entity';
 import { BillingImportJob, ImportJobStatus } from './entities/billing-import-job.entity';
+const { getAlegraKupoCredentials } = require('../../config');
 
 // Mapeo de tiendas origen → bodega y centro de costo en Kupocell
 const STORE_MAPPING: Record<string, { warehouseId: string, warehouseName: string, costCenterId: string, costCenterName: string }> = {
@@ -43,8 +44,7 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
         @InjectRepository(BillingImportJob)
         private jobRepo: Repository<BillingImportJob>,
     ) {
-        const kupoEmail = process.env.ALEGRA_KUPO_EMAIL || 'facturacionkupocell@gmail.com';
-        const kupoToken = process.env.ALEGRA_KUPO_TOKEN || '4ea4a9d5447c6ca04d00';
+            const { email: kupoEmail, token: kupoToken } = getAlegraKupoCredentials();
         const authHeader = Buffer.from(`${kupoEmail}:${kupoToken}`).toString('base64');
 
         this.alegraKupoApi = axios.create({

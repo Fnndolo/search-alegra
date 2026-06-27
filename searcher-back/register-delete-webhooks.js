@@ -3,22 +3,24 @@
  * Solo registra los eventos delete-invoice y delete-bill para las 4 tiendas
  */
 
+const { getStoreApiKey, getWebhookBaseUrl } = require('./config');
+
 const credentials = {
   pasto: {
-    apiKey: 'smartventas016@gmail.com:3484a840715b8402ec57',
+    apiKey: getStoreApiKey('pasto'),
   },
   medellin: {
-    apiKey: 'smartgadgetsmedellin@gmail.com:7b1fa22fb3c0ba4a10ca',
+    apiKey: getStoreApiKey('medellin'),
   },
   armenia: {
-    apiKey: 'smartgadgetsarmenia2@gmail.com:fb590e810fa0d3c76adc',
+    apiKey: getStoreApiKey('armenia'),
   },
   pereira: {
-    apiKey: 'smartventaspereira@gmail.com:22b4eae49d9a7b4f6344',
+    apiKey: getStoreApiKey('pereira'),
   }
 };
 
-const WEBHOOK_BASE_URL = 'search-alegra-production-5eed.up.railway.app/webhooks';
+const WEBHOOK_BASE_URL = getWebhookBaseUrl();
 
 // Solo eventos de delete
 const deleteEvents = [
@@ -38,6 +40,12 @@ async function registerWebhooks() {
     console.log('─'.repeat(50));
 
     const creds = credentials[store];
+    if (!WEBHOOK_BASE_URL) {
+      console.log('    ❌ WEBHOOK_BASE_URL no está configurada');
+      errorCount++;
+      continue;
+    }
+
     const webhookUrl = `${WEBHOOK_BASE_URL}/${store}`;
 
     for (const event of deleteEvents) {

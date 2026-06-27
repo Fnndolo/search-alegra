@@ -7,6 +7,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+const { getJwtSecret } = require('../../config');
 
 @Module({
   imports: [
@@ -14,11 +15,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET') || 'smart_alegra_secret_2026',
+      useFactory: async () => ({
+        secret: getJwtSecret(),
         signOptions: { expiresIn: '7d' }, // Sigue las instrucciones del usuario: persistente
       }),
-      inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],

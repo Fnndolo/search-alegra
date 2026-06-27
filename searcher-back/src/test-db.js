@@ -1,8 +1,9 @@
 const { DataSource } = require('typeorm');
 const path = require('path');
+const { getDatabaseConnectionString } = require('../config');
 const db = new DataSource({
   type: 'postgres',
-  url: 'postgresql://postgres:PAGJWxTCJoOBrtehUMWNmdmkoyzMEqSz@metro.proxy.rlwy.net:34115/railway',
+  url: getDatabaseConnectionString(),
   logging: false,
 });
 

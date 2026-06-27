@@ -2,6 +2,13 @@ import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+const {
+  getNodeEnv,
+  getDatabaseConnectionString,
+  getAlegraApiUrl,
+  getStoreApiKey,
+  getFrontendOrigin,
+} = require('../config');
 
 @Controller()
 export class AppController {
@@ -32,21 +39,21 @@ export class AppController {
     return {
       status: 'OK',
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development',
+      environment: getNodeEnv(),
       version: '1.0.0',
       database: {
         status: dbStatus,
-        url: process.env.DATABASE_URL ? 'CONFIGURED' : 'NOT CONFIGURED',
+        url: getDatabaseConnectionString() ? 'CONFIGURED' : 'NOT CONFIGURED',
         error: dbError
       },
       services: {
-        alegra_api: process.env.ALEGRA_API_URL ? 'CONFIGURED' : 'NOT CONFIGURED',
+        alegra_api: getAlegraApiUrl() ? 'CONFIGURED' : 'NOT CONFIGURED',
         stores: {
-          pasto: process.env.PASTO_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
-          medellin: process.env.MEDELLIN_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
-          armenia: process.env.ARMENIA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
-          pereira: process.env.PEREIRA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
-          bogota: process.env.BOGOTA_API_KEY ? 'CONFIGURED' : 'NOT CONFIGURED',
+          pasto: getStoreApiKey('pasto') ? 'CONFIGURED' : 'NOT CONFIGURED',
+          medellin: getStoreApiKey('medellin') ? 'CONFIGURED' : 'NOT CONFIGURED',
+          armenia: getStoreApiKey('armenia') ? 'CONFIGURED' : 'NOT CONFIGURED',
+          pereira: getStoreApiKey('pereira') ? 'CONFIGURED' : 'NOT CONFIGURED',
+          bogota: getStoreApiKey('bogota') ? 'CONFIGURED' : 'NOT CONFIGURED',
         }
       }
     };
@@ -89,7 +96,7 @@ export class AppController {
       message: 'Backend conectado correctamente!',
       timestamp: new Date().toISOString(),
       cors: 'enabled',
-      frontend_origin: process.env.FRONTEND_ORIGIN,
+      frontend_origin: getFrontendOrigin(),
       test_data: {
         invoices_sample: await this.dataSource.query('SELECT COUNT(*) as count FROM invoices WHERE store = $1', ['pasto']),
         bills_sample: await this.dataSource.query('SELECT COUNT(*) as count FROM bills WHERE store = $1', ['pasto'])

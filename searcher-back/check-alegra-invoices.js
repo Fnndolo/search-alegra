@@ -1,15 +1,15 @@
 const axios = require('axios');
-require('dotenv').config();
+const { getStoreApiKey } = require('./config');
 
 // Configuración
 const STORE = 'pasto'; // Cambia aquí la tienda: 'pasto', 'medellin', 'armenia', 'pereira'
 
 // Credenciales de Alegra por tienda
 const STORE_CREDENTIALS = {
-  pasto: process.env.PASTO_API_KEY,
-  medellin: process.env.MEDELLIN_API_KEY,
-  armenia: process.env.ARMENIA_API_KEY,
-  pereira: process.env.PEREIRA_API_KEY,
+  pasto: getStoreApiKey('pasto'),
+  medellin: getStoreApiKey('medellin'),
+  armenia: getStoreApiKey('armenia'),
+  pereira: getStoreApiKey('pereira'),
 };
 
 // Nombres de las tiendas

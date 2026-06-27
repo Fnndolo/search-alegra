@@ -1,9 +1,15 @@
 const { Client } = require('pg');
 const bcrypt = require('bcrypt');
-
-const DATABASE_URL = "postgresql://postgres:PAGJWxTCJoOBrtehUMWNmdmkoyzMEqSz@metro.proxy.rlwy.net:34115/railway";
+const { getDatabaseConnectionString } = require('./config');
 
 async function check() {
+  const DATABASE_URL = getDatabaseConnectionString();
+
+  if (!DATABASE_URL) {
+    console.error('Missing DATABASE_URL in environment');
+    return;
+  }
+
   const client = new Client({
     connectionString: DATABASE_URL,
     ssl: { rejectUnauthorized: false }
@@ -18,9 +24,11 @@ async function check() {
     
     for (const user of res.rows) {
       console.log(`User: ${user.username}, Role: ${user.role}, Status: ${user.status}`);
-      if (user.username === 'admin') {
-        const isMatch = await bcrypt.compare('Admin123!', user.password);
-        console.log(`Password 'Admin123!' match for admin: ${isMatch}`);
+      if (user.username === 'admin' && process.env.ADMIN_TEST_PASSWORD) {
+        const isMatch = await bcrypt.compare(process.env.ADMIN_TEST_PASSWORD, user.password);
+        console.log(`Admin password from env match: ${isMatch}`);
+      } else if (user.username === 'admin') {
+        console.log('ADMIN_TEST_PASSWORD is not configured, skipping password check');
       }
     }
 

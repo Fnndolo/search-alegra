@@ -1,16 +1,16 @@
 const axios = require('axios');
 const { Client } = require('pg');
-require('dotenv').config();
+const { getDatabaseConnectionString, getStoreApiKey } = require('./config');
 
 // Mapeo de tiendas con sus API Keys
 const STORES = {
-  pasto: process.env.PASTO_API_KEY || 'kupocell.sgpasto@gmail.com:3484a840715b8402ec57',
-  medellin: process.env.MEDELLIN_API_KEY || 'kupocell.medellin@gmail.com:7b1fa22fb3c0ba4a10ca',
-  armenia: process.env.ARMENIA_API_KEY || 'kupocell.armenia@gmail.com:fb590e810fa0d3c76adc',
-  pereira: process.env.PEREIRA_API_KEY || 'kupocell.pereira@gmail.com:22b4eae49d9a7b4f6344'
+  pasto: getStoreApiKey('pasto'),
+  medellin: getStoreApiKey('medellin'),
+  armenia: getStoreApiKey('armenia'),
+  pereira: getStoreApiKey('pereira')
 };
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:PAGJWxTCJoOBrtehUMWNmdmkoyzMEqSz@metro.proxy.rlwy.net:34115/railway';
+const DATABASE_URL = getDatabaseConnectionString();
 const ALEGRA_API_URL = 'https://api.alegra.com/api/v1/invoices';
 const ALEGRA_PAYMENTS_URL = 'https://api.alegra.com/api/v1/payments';
 
@@ -36,6 +36,10 @@ async function fetchBankName(paymentId, apiKey) {
 }
 
 async function run() {
+  if (!DATABASE_URL) {
+    throw new Error('DATABASE_URL is not configured');
+  }
+
   console.log(`\n🚀 INICIANDO SCRIPT DE ACTUALIZACIÓN HISTÓRICA DE PAGOS FALTANTES 🚀`);
   console.log(`📅 Rango de fechas: Desde ${START_DATE} hasta ${END_DATE}\n`);
 

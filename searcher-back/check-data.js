@@ -1,7 +1,8 @@
 const { Client } = require('pg');
+const { getDatabaseConnectionString } = require('./config');
 
 const client = new Client({
-  connectionString: 'postgresql://postgres:PAGJWxTCJoOBrtehUMWNmdmkoyzMEqSz@metro.proxy.rlwy.net:34115/railway'
+  connectionString: getDatabaseConnectionString()
 });
 
 async function checkData() {
