@@ -1,0 +1,93 @@
+<p-toast></p-toast>
+
+<p-dialog
+  [(visible)]="visible"
+  [modal]="true"
+  [closable]="true"
+  (onHide)="close()"
+  header="Nuevo Producto"
+  [style]="{ width: '520px' }"
+  styleClass="!rounded-xl">
+
+  <div class="flex flex-col gap-4 pt-2">
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Nombre *</label>
+      <input pInputText [(ngModel)]="form.name" placeholder="Ej: iPhone 17 Pro Max" class="w-full" />
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Categoría *</label>
+      <p-dropdown
+        [(ngModel)]="form.categoryId"
+        [options]="categorias"
+        optionLabel="name"
+        optionValue="id"
+        placeholder="Buscar categoría..."
+        [filter]="true"
+        filterBy="name"
+        filterPlaceholder="Escribí para buscar..."
+        [showClear]="true"
+        [resetFilterOnHide]="true"
+        appendTo="body"
+        styleClass="w-full">
+      </p-dropdown>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Precio de venta</label>
+      <p-inputNumber [(ngModel)]="form.salePrice" mode="currency" currency="COP" locale="es-CO"
+                     [minFractionDigits]="0" placeholder="Ej: 1.500.000" styleClass="w-full" />
+      <span class="text-xs text-surface-400">Mismo precio para todas las variantes (color) del producto.</span>
+    </div>
+
+    <div class="flex items-start gap-3 border-t border-surface-100 pt-4">
+      <p-toggleswitch [(ngModel)]="form.hasIdentifier"></p-toggleswitch>
+      <div>
+        <span class="text-sm text-surface-700 font-medium">Requiere identificador (IMEI/serial)</span>
+        <p class="text-xs text-surface-400 mt-0.5">Celulares, laptops y audio original. Los accesorios y genéricos no lo requieren.</p>
+      </div>
+    </div>
+
+    <div class="flex items-start gap-3">
+      <p-toggleswitch [(ngModel)]="form.negativeSell"></p-toggleswitch>
+      <div>
+        <span class="text-sm text-surface-700 font-medium">Permitir venta en negativo</span>
+        <p class="text-xs text-surface-400 mt-0.5">Informativo — Alegra ya permite vender sin stock por su cuenta.</p>
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-3 border-t border-surface-100 pt-4">
+      <p class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Variantes iniciales (color + SKU)</p>
+
+      <div *ngFor="let variant of variants; let i = index" class="flex items-end gap-2">
+        <div class="flex flex-col gap-1 flex-1">
+          <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Color *</label>
+          <app-color-picker [initialColor]="variant.preview" (colorSelected)="onVariantColorSelected(i, $event)"></app-color-picker>
+        </div>
+
+        <div class="flex flex-col gap-1 flex-1">
+          <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">SKU *</label>
+          <input pInputText [(ngModel)]="variant.sku" [name]="'sku' + i" placeholder="Ej: IPHONE17PM-SILVER" class="w-full" />
+        </div>
+
+        <button pButton type="button" icon="pi pi-trash" severity="danger" [text]="true"
+                *ngIf="variants.length > 1" (click)="removeVariantRow(i)"></button>
+      </div>
+
+      <button pButton type="button" label="Agregar otra variante" icon="pi pi-plus" severity="secondary" [text]="true"
+              class="self-start" (click)="addVariantRow()"></button>
+    </div>
+
+  </div>
+
+  <ng-template pTemplate="footer">
+    <div class="flex justify-end gap-2 pt-2">
+      <button pButton type="button" label="Cancelar" icon="pi pi-times" severity="secondary" [text]="true" (click)="close()"></button>
+      <button pButton type="button" label="Guardar" icon="pi pi-check" [loading]="loading"
+              [disabled]="!form.name?.trim() || !form.categoryId || !storeId || loading"
+              (click)="save()"></button>
+    </div>
+  </ng-template>
+
+</p-dialog>

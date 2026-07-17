@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole } from '../entities/user.entity';
 import * as bcrypt from 'bcrypt';
+const { getAdminSeedCredentials } = require('../../config');
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -18,11 +19,12 @@ export class UsersService implements OnModuleInit {
   async seedAdmin() {
     const admin = await this.usersRepository.findOne({ where: { role: UserRole.ADMIN } });
     if (!admin) {
-      const hashedPassword = await bcrypt.hash('Admin123!', 10);
+      const { username, password, email } = getAdminSeedCredentials();
+      const hashedPassword = await bcrypt.hash(password, 10);
       const newAdmin = this.usersRepository.create({
-        username: 'admin',
+        username,
         password: hashedPassword,
-        email: 'admin@smartgadgets.com',
+        email,
         role: UserRole.ADMIN,
       });
       await this.usersRepository.save(newAdmin);

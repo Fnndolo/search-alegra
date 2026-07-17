@@ -110,7 +110,15 @@ export class InvoicesService {
   /**
    * Obtiene las facturas desde la base de datos con paginación
    */
-  async getCachedInvoices(store: string): Promise<{
+  async getCachedInvoices(
+    store: string,
+    page = 1,
+    limit = 50,
+    search?: string,
+    status?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<{
     updating: boolean;
     progress: number;
     fullyLoaded: boolean;
@@ -118,10 +126,11 @@ export class InvoicesService {
     store: string;
     storeDisplayName: string;
     total: number;
+    page: number;
+    limit: number;
   }> {
-    // Si la tienda es "todas", obtener datos de todas las tiendas
     if (store?.toLowerCase() === 'todas') {
-      return this.getAllStoresInvoices();
+      return this.getAllStoresInvoices(page, limit, search, status, dateFrom, dateTo);
     }
 
     // Validar que la tienda sea válida
@@ -140,17 +149,35 @@ export class InvoicesService {
       });
     }
 
-    // Obtener las facturas de la base de datos ordenadas por el ID de la factura (data->id) descendente
-    const invoices = await this.invoiceRepository
+    const qb = this.invoiceRepository
       .createQueryBuilder('invoice')
-      .where('invoice.store = :store', { store })
-      .orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
-      .getMany();
+      .where('invoice.store = :store', { store });
+
+    if (search) {
+      qb.andWhere("CAST(invoice.data AS TEXT) ILIKE :search", { search: `%${search}%` });
+    }
+    if (status) {
+      qb.andWhere("invoice.data->>'status' = :status", { status });
+    }
+    if (dateFrom) {
+      qb.andWhere("invoice.data->>'date' >= :dateFrom", { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere("invoice.data->>'date' <= :dateTo", { dateTo });
+    }
+
+    qb.orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
+      .take(limit)
+      .skip((page - 1) * limit);
+
+    const [invoices, total] = await qb.getManyAndCount();
 
     return {
       updating: syncStatus.isSyncing,
-      progress: invoices.length,
+      progress: syncStatus.totalRecords,
       fullyLoaded: syncStatus.isFullyLoaded,
+      page,
+      limit,
       data: invoices.map(inv => {
         const d = inv.data;
         // Solo devolver campos necesarios para el buscador para optimizar transferencia
@@ -197,14 +224,14 @@ export class InvoicesService {
       }),
       store: store,
       storeDisplayName: this.storeCredentialsService.getStoreDisplayName(store),
-      total: syncStatus.totalRecords
+      total,
     };
   }
 
   /**
    * Obtiene las facturas de todas las tiendas combinadas
    */
-  async getAllStoresInvoices(): Promise<{
+  async getAllStoresInvoices(page = 1, limit = 50, search?: string, status?: string, dateFrom?: string, dateTo?: string): Promise<{
     updating: boolean;
     progress: number;
     fullyLoaded: boolean;
@@ -212,16 +239,34 @@ export class InvoicesService {
     store: string;
     storeDisplayName: string;
     total: number;
+    page: number;
+    limit: number;
   }> {
     const physicalStores = this.storeCredentialsService.getAllPhysicalStores();
 
-    // Obtener todas las facturas de todas las tiendas
-    const allInvoices = await this.invoiceRepository
+    const qb = this.invoiceRepository
       .createQueryBuilder('invoice')
-      .where('invoice.store IN (:...stores)', { stores: physicalStores })
-      .orderBy('invoice.datetime', 'DESC')
+      .where('invoice.store IN (:...stores)', { stores: physicalStores });
+
+    if (search) {
+      qb.andWhere("CAST(invoice.data AS TEXT) ILIKE :search", { search: `%${search}%` });
+    }
+    if (status) {
+      qb.andWhere("invoice.data->>'status' = :status", { status });
+    }
+    if (dateFrom) {
+      qb.andWhere("invoice.data->>'date' >= :dateFrom", { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere("invoice.data->>'date' <= :dateTo", { dateTo });
+    }
+
+    qb.orderBy('invoice.datetime', 'DESC')
       .addOrderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
-      .getMany();
+      .take(limit)
+      .skip((page - 1) * limit);
+
+    const [allInvoices, total] = await qb.getManyAndCount();
 
     // Verificar el estado de sincronización de cada tienda
     const syncStatuses = await Promise.all(
@@ -271,7 +316,9 @@ export class InvoicesService {
       }),
       store: 'todas',
       storeDisplayName: 'Todas las tiendas',
-      total: totalRecords
+      total,
+      page,
+      limit,
     };
   }
 
@@ -395,42 +442,60 @@ export class InvoicesService {
    * Obtiene todos los medios de pago (nombres de cuentas bancarias) desde la API de pagos para una factura
    */
   private async fetchAllPaymentBankAccounts(store: string, invoiceData: any): Promise<{ paymentId: string, bankName: string, amount: number }[]> {
-    try {
-      if (!invoiceData.payments || invoiceData.payments.length === 0) {
-        return [];
-      }
+    if (!invoiceData.payments || invoiceData.payments.length === 0) return [];
 
-      const credentials = this.storeCredentialsService.getCredentials(store);
-      const results: { paymentId: string, bankName: string, amount: number }[] = [];
+    const credentials = this.storeCredentialsService.getCredentials(store);
+    const authHeader = `Basic ${Buffer.from(credentials.apiKey).toString('base64')}`;
+    const payments = (invoiceData.payments as any[]).filter((p) => p.id);
 
-      for (const payment of invoiceData.payments) {
-        if (!payment.id) continue;
+    const fetchPayment = (paymentId: string | number) =>
+      this.makeRequestWithRetry(() =>
+        axios.get(`https://api.alegra.com/api/v1/payments/${paymentId}`, {
+          headers: { Authorization: authHeader },
+        }),
+      );
 
-        try {
-          const response = await this.makeRequestWithRetry(() =>
-            axios.get(`https://api.alegra.com/api/v1/payments/${payment.id}`, {
-              headers: { Authorization: `Basic ${Buffer.from(credentials.apiKey).toString('base64')}` },
-            })
-          );
+    const settled = await Promise.allSettled(payments.map((p) => fetchPayment(p.id)));
 
-          if (response.data && response.data.bankAccount && response.data.bankAccount.name) {
-            results.push({
-              paymentId: String(payment.id),
-              bankName: response.data.bankAccount.name,
-              amount: payment.amount || 0
-            });
-          }
-        } catch (err) {
-          this.logger.warn(`Error obteniendo detalle del pago ${payment.id} de factura ${invoiceData.id}: ${err.message}`);
+    const results: { paymentId: string; bankName: string; amount: number }[] = [];
+    const rateLimited: any[] = [];
+
+    for (let i = 0; i < settled.length; i++) {
+      const result = settled[i];
+      const payment = payments[i];
+
+      if (result.status === 'fulfilled') {
+        const data = result.value?.data;
+        if (data?.bankAccount?.name) {
+          results.push({ paymentId: String(payment.id), bankName: data.bankAccount.name, amount: payment.amount || 0 });
+        }
+      } else {
+        const status = result.reason?.response?.status ?? result.reason?.status;
+        if (status === 429) {
+          rateLimited.push(payment);
+        } else {
+          this.logger.warn(`Error obteniendo pago ${payment.id} de factura ${invoiceData.id}: ${result.reason?.message}`);
         }
       }
-
-      return results;
-
-    } catch (error) {
-      this.logger.warn(`Error procesando pagos para factura ${invoiceData.id}:`, error.message);
-      return [];
     }
+
+    if (rateLimited.length > 0) {
+      this.logger.warn(`Rate limit en ${rateLimited.length} pagos de factura ${invoiceData.id}. Reintentando secuencialmente...`);
+      for (const payment of rateLimited) {
+        try {
+          await new Promise((r) => setTimeout(r, 1000));
+          const response = await fetchPayment(payment.id);
+          const data = response?.data;
+          if (data?.bankAccount?.name) {
+            results.push({ paymentId: String(payment.id), bankName: data.bankAccount.name, amount: payment.amount || 0 });
+          }
+        } catch (err) {
+          this.logger.warn(`Error en fallback secuencial pago ${payment.id}: ${err.message}`);
+        }
+      }
+    }
+
+    return results;
   }
 
   private async saveInvoicesToDB(store: string, invoices: any[], markAsPendiente = true, skipPaymentFetch = false): Promise<void> {
@@ -855,26 +920,24 @@ export class InvoicesService {
    * Se ejecuta en lotes pequeños para no sobrecargar la API
    */
   private async updateAllPaymentMethods(store: string): Promise<void> {
-    const batchSize = 10; // Procesar 10 facturas a la vez
+    const batchSize = 10;
+    let offset = 0;
     let processed = 0;
 
-    // Obtener todas las facturas ordenadas por ID de factura (data->id)
-    const allInvoices = await this.invoiceRepository
-      .createQueryBuilder('invoice')
-      .where('invoice.store = :store', { store })
-      .orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
-      .getMany();
+    while (true) {
+      const batch = await this.invoiceRepository
+        .createQueryBuilder('invoice')
+        .where('invoice.store = :store', { store })
+        .orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
+        .take(batchSize)
+        .skip(offset)
+        .getMany();
 
-    this.logger.log(`📊 Total de facturas a procesar: ${allInvoices.length}`);
+      if (batch.length === 0) break;
 
-    for (let i = 0; i < allInvoices.length; i += batchSize) {
-      const batch = allInvoices.slice(i, i + batchSize);
-
-      // Procesar este lote
       await Promise.all(
         batch.map(async (invoice) => {
           try {
-            // Solo actualizar si tiene pagos en los datos
             if (invoice.data?.payments && invoice.data.payments.length > 0) {
               const bankAccounts = await this.fetchAllPaymentBankAccounts(store, invoice.data);
               if (bankAccounts.length > 0) {
@@ -890,12 +953,12 @@ export class InvoicesService {
       );
 
       processed += batch.length;
-      this.logger.log(`💳 Progreso: ${processed}/${allInvoices.length} facturas procesadas`);
+      offset += batchSize;
+      this.logger.log(`💳 Progreso: ${processed} facturas procesadas`);
 
-      // Pausa entre lotes para no saturar la API
-      if (i + batchSize < allInvoices.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      if (batch.length < batchSize) break;
+
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     this.logger.log(`✅ Medios de pago actualizados para ${processed} facturas`);

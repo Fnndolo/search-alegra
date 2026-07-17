@@ -1,0 +1,22 @@
+<div class="relative">
+  <input
+    pInputText
+    [(ngModel)]="query"
+    (ngModelChange)="onQueryChange($event)"
+    (focus)="onFocus()"
+    (blur)="onBlur()"
+    (keydown.enter)="onEnter()"
+    [placeholder]="placeholder"
+    class="w-full" />
+
+  <div *ngIf="showSuggestions && suggestions.length"
+       class="absolute z-50 mt-1 w-full bg-white border border-surface-200 rounded-lg shadow-lg max-h-56 overflow-auto">
+    <div *ngFor="let c of suggestions"
+         class="flex items-center gap-2 px-3 py-2 hover:bg-surface-50 cursor-pointer"
+         (mousedown)="selectColor(c, $event)">
+      <span class="inline-block w-4 h-4 rounded-full border border-surface-300 shrink-0"
+            [ngStyle]="swatchStyle(c)"></span>
+      <span class="text-sm text-surface-700">{{ c.name }}</span>
+    </div>
+  </div>
+</div>

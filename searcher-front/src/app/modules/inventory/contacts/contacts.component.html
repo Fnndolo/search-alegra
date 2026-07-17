@@ -1,0 +1,172 @@
+<p-toast></p-toast>
+
+<div class="flex-1 flex flex-col gap-4 p-4 md:p-6">
+
+  <!-- Tabs -->
+  <div class="flex gap-1 border-b border-surface-200">
+    <button type="button" (click)="setTab('todos')"
+            class="px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px"
+            [class.border-primary-500]="activeTab === 'todos'"
+            [class.text-primary-600]="activeTab === 'todos'"
+            [class.border-transparent]="activeTab !== 'todos'"
+            [class.text-surface-500]="activeTab !== 'todos'">Todos</button>
+    <button type="button" (click)="setTab('clientes')"
+            class="px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px"
+            [class.border-primary-500]="activeTab === 'clientes'"
+            [class.text-primary-600]="activeTab === 'clientes'"
+            [class.border-transparent]="activeTab !== 'clientes'"
+            [class.text-surface-500]="activeTab !== 'clientes'">Clientes</button>
+    <button type="button" (click)="setTab('proveedores')"
+            class="px-5 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px"
+            [class.border-primary-500]="activeTab === 'proveedores'"
+            [class.text-primary-600]="activeTab === 'proveedores'"
+            [class.border-transparent]="activeTab !== 'proveedores'"
+            [class.text-surface-500]="activeTab !== 'proveedores'">Proveedores</button>
+  </div>
+
+  <!-- Filters -->
+  <div class="bg-white border border-surface-200 rounded-xl shadow-sm p-4 flex flex-col md:flex-row gap-3 md:items-end">
+    <div class="flex flex-col gap-1 md:w-56">
+      <label class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Sede</label>
+      <p-dropdown [options]="sedeOptions" [(ngModel)]="selectedStoreId" optionLabel="nombre" optionValue="id"
+                  placeholder="Todas las sedes" styleClass="w-full" (onChange)="onStoreChange()"></p-dropdown>
+    </div>
+    <div class="flex flex-col gap-1 flex-1">
+      <label class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Buscar (nombre / identificación)</label>
+      <p-iconField iconPosition="left">
+        <p-inputIcon styleClass="pi pi-search" />
+        <input pInputText [(ngModel)]="searchValue" (ngModelChange)="onSearchChange()" placeholder="Buscar contacto..." class="w-full" />
+      </p-iconField>
+    </div>
+
+    <div class="flex gap-2">
+      <button pButton type="button" icon="pi pi-sync"
+              [label]="selectedStoreId ? 'Sincronizar sede' : 'Sincronizar todas'"
+              [outlined]="true" [loading]="syncing" (click)="sync(false)"
+              pTooltip="Trae solo los contactos nuevos (rápido)"></button>
+      <button pButton type="button" icon="pi pi-cloud-download"
+              label="Sincronización completa" severity="secondary"
+              [outlined]="true" [loading]="syncing" (click)="sync(true)"
+              pTooltip="Vuelve a traer TODOS los contactos de Alegra (lento, úsalo si faltan)"></button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="bg-white border border-surface-200 rounded-xl shadow-sm overflow-hidden">
+    <div *ngIf="loading" class="flex items-center gap-2 px-5 py-8 text-surface-400 text-sm">
+      <i class="pi pi-spin pi-spinner"></i><span>Cargando contactos...</span>
+    </div>
+
+    <table *ngIf="!loading" class="w-full text-sm table-fixed">
+      <thead>
+        <tr class="bg-surface-50 border-b border-surface-200">
+          <th class="w-[26%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Nombre</th>
+          <th class="w-[14%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Identificación</th>
+          <th class="w-[20%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Email</th>
+          <th class="w-[13%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Teléfono</th>
+          <th class="w-[14%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Tipo</th>
+          <th class="w-[13%] px-5 py-3 text-right text-xs font-semibold text-surface-500 uppercase tracking-wide">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of contacts" class="border-b border-surface-100 hover:bg-surface-50">
+          <td class="px-5 py-3 font-medium text-surface-800 break-words">
+            {{ c.name }}
+            <div *ngIf="c.store" class="text-xs font-normal text-surface-400">{{ c.store.name }}</div>
+          </td>
+          <td class="px-5 py-3 font-mono text-xs text-surface-600 break-words">{{ c.identification ?? '—' }}</td>
+          <td class="px-5 py-3 text-surface-600 break-words">{{ c.email ?? '—' }}</td>
+          <td class="px-5 py-3 text-surface-600 break-words">{{ c.mobile || c.phone || '—' }}</td>
+          <td class="px-5 py-3">
+            <div class="flex flex-wrap gap-1">
+              <p-tag *ngIf="c.is_client" value="Cliente" severity="info"></p-tag>
+              <p-tag *ngIf="c.is_provider" value="Proveedor" severity="success"></p-tag>
+            </div>
+          </td>
+          <td class="px-5 py-3 text-right">
+            <button pButton type="button" icon="pi pi-pencil" size="small" severity="info" [text]="true"
+                    pTooltip="Editar" (click)="openEdit(c)"></button>
+          </td>
+        </tr>
+        <tr *ngIf="!contacts.length">
+          <td colspan="6" class="px-5 py-10 text-center text-surface-400 text-sm">No hay contactos para los filtros seleccionados.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p-paginator *ngIf="total > 0"
+                 [first]="first" [rows]="rows" [totalRecords]="total"
+                 [rowsPerPageOptions]="[10, 25, 50, 100]"
+                 [showCurrentPageReport]="true"
+                 currentPageReportTemplate="{first} - {last} de {totalRecords}"
+                 (onPageChange)="onPageChange($event)"></p-paginator>
+  </div>
+
+  <p *ngIf="!loading" class="text-xs text-surface-400 px-1">{{ total }} contacto(s) en total</p>
+
+</div>
+
+<!-- Edit dialog -->
+<p-dialog [(visible)]="showEditDialog" [modal]="true" [style]="{ width: '460px' }"
+          header="Editar contacto" (onHide)="showEditDialog=false">
+  <div class="flex flex-col gap-4 pt-1">
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Nombre *</label>
+      <input pInputText [(ngModel)]="editForm.name" class="w-full" />
+    </div>
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Identificación</label>
+      <input pInputText [(ngModel)]="editForm.identification" class="w-full" />
+    </div>
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Email</label>
+      <input pInputText [(ngModel)]="editForm.email" class="w-full" />
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Teléfono</label>
+        <input pInputText [(ngModel)]="editForm.phone" class="w-full" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Celular</label>
+        <input pInputText [(ngModel)]="editForm.mobile" class="w-full" />
+      </div>
+    </div>
+
+    <div class="border-t border-surface-100 pt-3">
+      <p class="text-xs font-semibold text-surface-500 uppercase tracking-wide mb-2">Dirección</p>
+      <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Dirección</label>
+          <input pInputText [(ngModel)]="editForm.address" placeholder="Calle / carrera..." class="w-full" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Ciudad</label>
+            <input pInputText [(ngModel)]="editForm.city" class="w-full" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Departamento</label>
+            <input pInputText [(ngModel)]="editForm.department" class="w-full" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">País</label>
+            <input pInputText [(ngModel)]="editForm.country" class="w-full" />
+          </div>
+          <div class="flex flex-col gap-1">
+            <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Código postal</label>
+            <input pInputText [(ngModel)]="editForm.zipCode" class="w-full" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p class="text-xs text-surface-400">Los cambios se guardan en Alegra y en la base local.</p>
+  </div>
+  <ng-template pTemplate="footer">
+    <div class="flex justify-end gap-2 pt-2">
+      <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" (click)="showEditDialog=false"></button>
+      <button pButton type="button" label="Guardar" [loading]="saving" (click)="saveEdit()"></button>
+    </div>
+  </ng-template>
+</p-dialog>

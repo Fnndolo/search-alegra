@@ -1,0 +1,296 @@
+<p-toast></p-toast>
+
+<div class="p-4 max-w-5xl mx-auto flex flex-col gap-4">
+
+  <!-- Header -->
+  <div class="flex items-center gap-3">
+    <button pButton icon="pi pi-arrow-left" [text]="true" (click)="goBack()"></button>
+    <h2 class="text-xl font-semibold text-surface-900">{{ producto?.name || 'Producto' }}</h2>
+    <p-tag *ngIf="producto" [severity]="producto.active ? 'success' : 'secondary'"
+           [value]="producto.active ? 'Activo' : 'Inactivo'">
+    </p-tag>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="flex items-center gap-2 text-surface-400 py-16 justify-center">
+    <p-progressSpinner styleClass="w-8 h-8" strokeWidth="4"></p-progressSpinner>
+    <span class="text-sm">Cargando producto...</span>
+  </div>
+
+  <ng-container *ngIf="!loading && producto">
+
+    <!-- Main card -->
+    <p-card>
+      <div class="flex flex-wrap justify-between gap-4">
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-3 flex-1">
+          <div>
+            <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-1">Categoría</p>
+            <p class="text-sm text-surface-800">{{ producto.category.name || '—' }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-1">Sede</p>
+            <p class="text-sm text-surface-800">{{ producto.store.name || '—' }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-1">Precio de venta</p>
+            <p class="text-sm text-surface-800">{{ producto.salePrice != null ? (producto.salePrice | number) : '—' }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-1">Identificador</p>
+            <p class="text-sm text-surface-800">{{ producto.hasIdentifier ? 'Con identificador (IMEI/serial)' : 'Sin identificador' }}</p>
+          </div>
+          <div>
+            <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-1">Venta en negativo</p>
+            <p class="text-sm text-surface-800">{{ producto.negativeSell ? 'Permitida' : 'No permitida' }}</p>
+          </div>
+        </div>
+
+        <div class="flex gap-2 items-start">
+          <button pButton label="Editar" icon="pi pi-pencil" severity="secondary" [outlined]="true"
+                  (click)="openEditProduct()"></button>
+          <button pButton label="Eliminar producto" icon="pi pi-trash" severity="danger" [outlined]="true"
+                  (click)="confirmDeleteProduct()"></button>
+        </div>
+      </div>
+    </p-card>
+
+    <!-- Variants section -->
+    <p-card header="Variantes de color">
+      <div class="flex justify-end mb-3">
+        <button pButton type="button" label="Agregar variante" icon="pi pi-plus" size="small"
+                (click)="openAddVariant()"></button>
+      </div>
+      <p-table [value]="producto.variants" dataKey="id" [expandedRowKeys]="expandedRows" styleClass="p-datatable-sm">
+        <ng-template pTemplate="header">
+          <tr>
+            <th style="width: 3rem"></th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Color</th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">SKU</th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Stock total</th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Estado</th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold text-right">Acciones</th>
+          </tr>
+        </ng-template>
+
+        <ng-template pTemplate="body" let-variant let-expanded="expanded">
+          <tr>
+            <td>
+              <button pButton type="button" [icon]="expanded ? 'pi pi-chevron-down' : 'pi pi-chevron-right'"
+                      [text]="true" size="small" (click)="toggleRow(variant)">
+              </button>
+            </td>
+            <td>
+              <div class="flex items-center gap-2">
+                <span class="inline-block w-4 h-4 rounded-full border border-surface-300 shrink-0"
+                      [ngStyle]="swatchStyle(variant.color)"></span>
+                <span class="text-sm text-surface-700">{{ variant.color?.name || 'Sin color' }}</span>
+              </div>
+            </td>
+            <td class="text-sm font-mono text-surface-600">{{ variant.sku }}</td>
+            <td class="text-sm text-surface-700">{{ variant.totalStock }}</td>
+            <td>
+              <p-tag [severity]="variant.active ? 'success' : 'secondary'"
+                     [value]="variant.active ? 'Activa' : 'Inactiva'">
+              </p-tag>
+            </td>
+            <td class="text-right">
+              <button pButton type="button" icon="pi pi-pencil" [text]="true" size="small"
+                      (click)="openEditVariant(variant)"></button>
+              <button pButton type="button" icon="pi pi-trash" [text]="true" severity="danger" size="small"
+                      (click)="confirmDeleteVariant(variant)"></button>
+            </td>
+          </tr>
+        </ng-template>
+
+        <ng-template pTemplate="rowexpansion" let-variant>
+          <tr>
+            <td colspan="6" class="bg-surface-50 p-0">
+              <div class="p-4">
+                <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-2">Stock por bodega</p>
+                <div *ngIf="!variant.stockByWarehouse?.length" class="text-sm text-surface-400">Sin bodegas configuradas.</div>
+
+                <div *ngFor="let wh of variant.stockByWarehouse" class="mb-3 last:mb-0">
+                  <div class="flex items-center justify-between bg-white border border-surface-200 rounded-lg px-3 py-2">
+                    <span class="text-sm font-medium text-surface-800">{{ wh.warehouseName }}</span>
+                    <span class="text-sm text-surface-600">{{ wh.quantity }} unidad(es)</span>
+                  </div>
+
+                  <!-- Nested units when the product uses individual identifiers -->
+                  <div *ngIf="producto.hasIdentifier && wh.units?.length" class="mt-1 ml-4 border-l border-surface-200 pl-3">
+                    <div *ngFor="let unit of wh.units" class="flex items-center justify-between py-1">
+                      <span class="text-xs font-mono text-surface-600">{{ unit.identifier || '—' }}</span>
+                      <p-tag [severity]="unitStatusSeverity(unit)" [value]="unitStatusLabel(unit)"></p-tag>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+        </ng-template>
+
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td colspan="6" class="text-center py-8 text-surface-400">
+              <p class="text-sm">Este producto no tiene variantes.</p>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </p-card>
+
+    <!-- Alegra publish status per bodega -->
+    <p-card header="Publicación en Alegra por bodega">
+      <div *ngIf="loadingAlegraStatus" class="flex items-center gap-2 text-surface-400 py-6 justify-center">
+        <p-progressSpinner styleClass="w-6 h-6" strokeWidth="4"></p-progressSpinner>
+        <span class="text-sm">Cargando estado en Alegra...</span>
+      </div>
+
+      <p-table *ngIf="!loadingAlegraStatus" [value]="alegraStatus" styleClass="p-datatable-sm">
+        <ng-template pTemplate="header">
+          <tr>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Bodega</th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Estado</th>
+            <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Item Alegra</th>
+            <th style="width: 10rem"></th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-row>
+          <tr>
+            <td class="text-sm text-surface-800">
+              {{ row.warehouseName }}
+              <p-tag *ngIf="row.isMain" value="Principal" severity="secondary" styleClass="ml-2"></p-tag>
+            </td>
+            <td>
+              <p-tag [value]="row.created ? 'Publicado' : 'No publicado'" [severity]="row.created ? 'success' : 'warn'"></p-tag>
+            </td>
+            <td class="text-sm text-surface-600 font-mono">{{ row.alegraName || '—' }}</td>
+            <td>
+              <button pButton type="button" label="Publicar" icon="pi pi-cloud-upload" size="small" [outlined]="true"
+                      *ngIf="!row.created" [loading]="!!publishing[row.warehouseId]"
+                      (click)="publishInWarehouse(row)"></button>
+            </td>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td colspan="4" class="text-center py-8 text-surface-400">
+              <p class="text-sm">Esta sede no tiene bodegas configuradas.</p>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </p-card>
+
+  </ng-container>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- Dialog: editar producto                        -->
+  <!-- ══════════════════════════════════════════════ -->
+  <p-dialog [(visible)]="showEditProduct" [modal]="true" [style]="{ width: '480px' }"
+            header="Editar producto" (onHide)="showEditProduct=false">
+    <div class="flex flex-col gap-4 pt-2">
+      <div>
+        <label class="text-xs uppercase tracking-wide text-surface-500 font-semibold block mb-1">Nombre</label>
+        <input pInputText [(ngModel)]="productForm.name" class="w-full" />
+      </div>
+      <div>
+        <label class="text-xs uppercase tracking-wide text-surface-500 font-semibold block mb-1">Categoría</label>
+        <p-dropdown [(ngModel)]="productForm.categoryId" [options]="categorias" optionLabel="name" optionValue="id"
+                    placeholder="Elegir categoría..." styleClass="w-full">
+        </p-dropdown>
+      </div>
+      <div>
+        <label class="text-xs uppercase tracking-wide text-surface-500 font-semibold block mb-1">Precio de venta</label>
+        <p-inputNumber [(ngModel)]="productForm.salePrice" mode="decimal" [minFractionDigits]="0" styleClass="w-full" inputStyleClass="w-full">
+        </p-inputNumber>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-surface-700">Con identificador (IMEI/serial)</span>
+        <p-toggleswitch [(ngModel)]="productForm.hasIdentifier"></p-toggleswitch>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-surface-700">Permitir venta en negativo</span>
+        <p-toggleswitch [(ngModel)]="productForm.negativeSell"></p-toggleswitch>
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-surface-700">Activo</span>
+        <p-toggleswitch [(ngModel)]="productForm.active"></p-toggleswitch>
+      </div>
+    </div>
+    <ng-template pTemplate="footer">
+      <div class="flex justify-end gap-2 pt-2">
+        <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" (click)="showEditProduct=false"></button>
+        <button pButton label="Guardar" [loading]="savingProduct" (click)="saveProduct()"></button>
+      </div>
+    </ng-template>
+  </p-dialog>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- Dialog: confirmar eliminación de producto      -->
+  <!-- ══════════════════════════════════════════════ -->
+  <p-dialog [(visible)]="showDeleteProduct" [modal]="true" [style]="{ width: '420px' }"
+            header="Eliminar producto" (onHide)="showDeleteProduct=false">
+    <div class="flex items-start gap-3 pt-1">
+      <i class="pi pi-exclamation-triangle text-2xl text-amber-500 mt-0.5"></i>
+      <p class="text-sm text-surface-700">
+        ¿Seguro que querés eliminar el producto <strong>{{ producto?.name }}</strong>?
+        Solo se puede eliminar si ninguna de sus variantes tiene existencias.
+      </p>
+    </div>
+    <ng-template pTemplate="footer">
+      <div class="flex justify-end gap-2 pt-2">
+        <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" (click)="showDeleteProduct=false"></button>
+        <button pButton label="Eliminar" severity="danger" [loading]="deletingProduct" (click)="deleteProduct()"></button>
+      </div>
+    </ng-template>
+  </p-dialog>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- Dialog: editar variante                        -->
+  <!-- ══════════════════════════════════════════════ -->
+  <p-dialog [(visible)]="showEditVariant" [modal]="true" [style]="{ width: '420px' }"
+            [header]="editingVariant ? 'Editar variante' : 'Agregar variante'" (onHide)="showEditVariant=false">
+    <div class="flex flex-col gap-4 pt-2">
+      <div>
+        <label class="text-xs uppercase tracking-wide text-surface-500 font-semibold block mb-1">Color</label>
+        <app-color-picker [initialColor]="variantForm.preview" (colorSelected)="onVariantColorSelected($event)">
+        </app-color-picker>
+      </div>
+      <div>
+        <label class="text-xs uppercase tracking-wide text-surface-500 font-semibold block mb-1">SKU</label>
+        <input pInputText [(ngModel)]="variantForm.sku" class="w-full" />
+      </div>
+      <div class="flex items-center justify-between">
+        <span class="text-sm text-surface-700">Activa</span>
+        <p-toggleswitch [(ngModel)]="variantForm.active"></p-toggleswitch>
+      </div>
+    </div>
+    <ng-template pTemplate="footer">
+      <div class="flex justify-end gap-2 pt-2">
+        <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" (click)="showEditVariant=false"></button>
+        <button pButton label="Guardar" [loading]="savingVariant" (click)="saveVariant()"></button>
+      </div>
+    </ng-template>
+  </p-dialog>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!-- Dialog: confirmar eliminación de variante      -->
+  <!-- ══════════════════════════════════════════════ -->
+  <p-dialog [(visible)]="showDeleteVariant" [modal]="true" [style]="{ width: '420px' }"
+            header="Eliminar variante" (onHide)="showDeleteVariant=false">
+    <div class="flex items-start gap-3 pt-1">
+      <i class="pi pi-exclamation-triangle text-2xl text-amber-500 mt-0.5"></i>
+      <p class="text-sm text-surface-700">
+        ¿Seguro que querés eliminar la variante <strong>{{ variantToDelete?.sku }}</strong>?
+        Solo se puede eliminar si no tiene existencias y no es la última variante del producto.
+      </p>
+    </div>
+    <ng-template pTemplate="footer">
+      <div class="flex justify-end gap-2 pt-2">
+        <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" (click)="showDeleteVariant=false"></button>
+        <button pButton label="Eliminar" severity="danger" [loading]="deletingVariant" (click)="deleteVariant()"></button>
+      </div>
+    </ng-template>
+  </p-dialog>
+
+</div>

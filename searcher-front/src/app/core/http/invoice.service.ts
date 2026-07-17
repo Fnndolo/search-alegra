@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { catchError, Observable, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
@@ -9,11 +9,14 @@ export class InvoiceService {
 
   constructor(private http: HttpClient) {}
 
-  // Métodos para facturas de venta (invoices)
-  getAllInvoices(store?: string): Observable<any> {
-    const params = store ? `?store=${store}` : '';
-    const fullUrl = `${this.apiUrl}/invoices/all${params}`;
-    return this.http.get<any>(fullUrl);
+  getAllInvoices(store?: string, page = 1, limit = 30, search?: string, status?: string, dateFrom?: Date | null, dateTo?: Date | null): Observable<any> {
+    let params = new HttpParams().set('page', page).set('limit', limit);
+    if (store) params = params.set('store', store);
+    if (search?.trim()) params = params.set('search', search.trim());
+    if (status) params = params.set('status', status);
+    if (dateFrom) params = params.set('dateFrom', dateFrom.toISOString().split('T')[0]);
+    if (dateTo) params = params.set('dateTo', dateTo.toISOString().split('T')[0]);
+    return this.http.get<any>(`${this.apiUrl}/invoices/all`, { params });
   }
 
   updateInvoices(store?: string): Observable<any> {
@@ -26,23 +29,22 @@ export class InvoiceService {
     return this.http.get<any>(`${this.apiUrl}/invoices/sync-missing-payments${params}`);
   }
 
-  // Métodos para facturas de compra (bills)
-  getAllPurchaseInvoices(store?: string): Observable<any> {
-    const params = store ? `?store=${store}` : '';
-    const fullUrl = `${this.apiUrl}/bills/all${params}`;
-    return this.http.get<any>(fullUrl).pipe(
-      catchError(error => {
-        return of({ updating: false, progress: 0, data: [] });
-      })
+  getAllPurchaseInvoices(store?: string, page = 1, limit = 30, search?: string, status?: string, dateFrom?: Date | null, dateTo?: Date | null): Observable<any> {
+    let params = new HttpParams().set('page', page).set('limit', limit);
+    if (store) params = params.set('store', store);
+    if (search?.trim()) params = params.set('search', search.trim());
+    if (status) params = params.set('status', status);
+    if (dateFrom) params = params.set('dateFrom', dateFrom.toISOString().split('T')[0]);
+    if (dateTo) params = params.set('dateTo', dateTo.toISOString().split('T')[0]);
+    return this.http.get<any>(`${this.apiUrl}/bills/all`, { params }).pipe(
+      catchError(() => of({ updating: false, progress: 0, data: [], total: 0, page: 1, limit })),
     );
   }
 
   updatePurchaseInvoices(store?: string): Observable<any> {
     const params = store ? `?store=${store}` : '';
     return this.http.get<any>(`${this.apiUrl}/bills/update${params}`).pipe(
-      catchError(error => {
-        return of({ updating: false, progress: 0, data: [] });
-      })
+      catchError(() => of({ updating: false, progress: 0, data: [] })),
     );
   }
 }

@@ -1,0 +1,252 @@
+<p-toast></p-toast>
+
+<!-- Modals -->
+<app-product-form-modal
+  [(visible)]="showProductForm"
+  [storeId]="selectedSedeFilter"
+  (saved)="loadProductos()">
+</app-product-form-modal>
+
+<app-ingreso-modal
+  [(visible)]="showIngreso"
+  [producto]="selectedProducto"
+  [sedes]="sedes"
+  (saved)="onIngresoSaved()">
+</app-ingreso-modal>
+
+<app-imei-search-modal [(visible)]="showImeiSearch"></app-imei-search-modal>
+
+<div class="flex-1 flex flex-col p-3 md:p-5">
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- TAB: PRODUCTOS                                 -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div *ngIf="activeTab === 'productos'" class="flex-1 flex flex-col gap-4 animate-fade-in">
+
+      <!-- Filters bar -->
+      <div class="flex flex-wrap gap-2 items-center">
+        <p-dropdown
+          [(ngModel)]="selectedSedeFilter"
+          [options]="sedesOptions"
+          optionLabel="nombre"
+          optionValue="id"
+          placeholder="Elegir sede..."
+          (onChange)="onSedeFilterChange()"
+          styleClass="min-w-[180px]">
+        </p-dropdown>
+
+        <p-iconfield class="flex-1 min-w-[200px] max-w-sm">
+          <p-inputicon styleClass="pi pi-search" />
+          <input pInputText
+                 [(ngModel)]="searchValue"
+                 (ngModelChange)="onSearchChange()"
+                 placeholder="Buscar por nombre o SKU..."
+                 class="w-full" />
+        </p-iconfield>
+
+        <div class="flex gap-2 ml-auto">
+          <button pButton
+                  label="Buscar IMEI"
+                  icon="pi pi-qrcode"
+                  class="p-button-outlined p-button-secondary"
+                  (click)="showImeiSearch = true">
+          </button>
+          <button pButton
+                  label="Nuevo Producto"
+                  icon="pi pi-plus"
+                  [disabled]="!selectedSedeFilter"
+                  (click)="showProductForm = true">
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty state: no sede selected yet -->
+      <div *ngIf="!selectedSedeFilter" class="flex-1 flex flex-col items-center justify-center text-center py-16 bg-white border border-surface-200 rounded-xl shadow-sm">
+        <i class="pi pi-map-marker text-3xl mb-3 block opacity-30"></i>
+        <p class="text-sm text-surface-400">Seleccioná una sede para ver sus productos.</p>
+      </div>
+
+      <!-- Products table -->
+      <div *ngIf="selectedSedeFilter" class="flex-1 bg-white border border-surface-200 rounded-xl shadow-sm overflow-hidden">
+        <p-table
+          [value]="productos"
+          [loading]="loadingProductos"
+          [rows]="rows"
+          [totalRecords]="totalProductos"
+          [lazy]="true"
+          (onLazyLoad)="onPageChange($event)"
+          [paginator]="totalProductos > rows"
+          [rowsPerPageOptions]="[10, 20, 50]"
+          styleClass="p-datatable-sm"
+          [tableStyle]="{ 'min-width': '600px' }">
+
+          <ng-template pTemplate="header">
+            <tr>
+              <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Nombre</th>
+              <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Categoría</th>
+              <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Tipo</th>
+              <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Colores</th>
+            </tr>
+          </ng-template>
+
+          <ng-template pTemplate="body" let-producto>
+            <tr class="hover:bg-surface-50 transition-colors cursor-pointer"
+                (click)="verDetalle(producto)">
+              <td>
+                <div class="font-medium text-surface-900">{{ producto.name }}</div>
+              </td>
+              <td class="text-sm text-surface-600">{{ producto.category?.name || '—' }}</td>
+              <td>
+                <span *ngIf="esSinVariantes(producto)" class="text-xs px-2 py-0.5 rounded-full font-medium bg-surface-100 text-surface-600">
+                  Sin identificador
+                </span>
+                <span *ngIf="!esSinVariantes(producto)" class="text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
+                  Con identificador
+                </span>
+              </td>
+              <td>
+                <div *ngIf="producto.variants?.length; else sinColores" class="flex items-center gap-1">
+                  <span *ngFor="let v of producto.variants"
+                        class="inline-block w-4 h-4 rounded-full border border-surface-300 shrink-0"
+                        [pTooltip]="v.color?.name || 'Sin color'"
+                        [ngStyle]="{ background: v.color?.hexCode || '#d1d5db' }">
+                  </span>
+                </div>
+                <ng-template #sinColores>
+                  <span class="text-xs text-surface-400">—</span>
+                </ng-template>
+              </td>
+            </tr>
+          </ng-template>
+
+          <ng-template pTemplate="emptymessage">
+            <tr>
+              <td colspan="4" class="text-center py-12 text-surface-400">
+                <i class="pi pi-box text-3xl mb-3 block opacity-30"></i>
+                <p class="text-sm">No se encontraron productos.</p>
+              </td>
+            </tr>
+          </ng-template>
+
+        </p-table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- TAB: CATÁLOGOS                                 -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div *ngIf="activeTab === 'catalogos'" class="flex-1 flex flex-col gap-6 animate-fade-in w-full">
+      <app-catalogo-panel
+        [categorias]="categorias"
+        (changed)="reloadCatalogs()">
+      </app-catalogo-panel>
+      <app-bodega-panel [sedes]="sedes"></app-bodega-panel>
+      <app-color-panel></app-color-panel>
+      <app-import-drafts-panel [sedes]="sedes" [categorias]="categorias"></app-import-drafts-panel>
+    </div>
+
+    <!-- ══════════════════════════════════════════════ -->
+    <!-- TAB: CONFIGURACIÓN                             -->
+    <!-- ══════════════════════════════════════════════ -->
+    <div *ngIf="activeTab === 'configuracion'" class="flex-1 flex flex-col gap-4 animate-fade-in max-w-3xl">
+
+      <div *ngIf="loadingConfig" class="flex items-center gap-2 text-surface-400 py-8">
+        <i class="pi pi-spin pi-spinner"></i>
+        <span class="text-sm">Cargando configuración...</span>
+      </div>
+
+      <div *ngIf="syncConfig && !loadingConfig" class="flex flex-col gap-5">
+
+        <!-- Contacts sync card -->
+        <div class="bg-white border border-surface-200 rounded-xl shadow-sm p-5 flex items-center justify-between gap-4">
+          <div>
+            <h3 class="font-semibold text-surface-900 mb-1">Contactos (clientes y proveedores)</h3>
+            <p class="text-sm text-surface-500">Sincroniza los contactos de Alegra a la base local, para todas las sedes.</p>
+            <p *ngIf="contactsSyncResult" class="text-xs text-surface-400 mt-1">{{ contactsSyncResult }}</p>
+          </div>
+          <button pButton type="button" label="Sincronizar todas las sedes" icon="pi pi-sync" [outlined]="true"
+                  [loading]="syncingContacts" (click)="syncAllContacts()"></button>
+        </div>
+
+        <!-- Global mode card -->
+        <div class="bg-white border border-surface-200 rounded-xl shadow-sm p-5">
+          <h3 class="font-semibold text-surface-900 mb-1">Modo global de sincronización</h3>
+          <p class="text-sm text-surface-500 mb-4">Define el comportamiento por defecto para todas las sedes que no tengan un override configurado.</p>
+
+          <div class="flex flex-col gap-3">
+            <p-selectButton
+              [(ngModel)]="syncConfig.globalMode"
+              [options]="globalModeOptions"
+              optionLabel="label"
+              optionValue="value">
+            </p-selectButton>
+
+            <div class="flex items-start gap-2 text-xs text-surface-400 mt-1">
+              <i class="pi pi-info-circle mt-0.5"></i>
+              <span *ngIf="syncConfig.globalMode === 'auto'">
+                <strong class="text-surface-600">Auto:</strong> las variantes se sincronizan con Alegra inmediatamente al ingresar unidades.
+              </span>
+              <span *ngIf="syncConfig.globalMode === 'manual'">
+                <strong class="text-surface-600">Manual:</strong> las variantes quedan en estado Pendiente hasta que se sincronicen manualmente.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Per-sede overrides card -->
+        <div class="bg-white border border-surface-200 rounded-xl shadow-sm overflow-hidden">
+          <div class="px-5 py-4 border-b border-surface-100">
+            <h3 class="font-semibold text-surface-900">Override por sede</h3>
+            <p class="text-xs text-surface-400 mt-0.5">Configurá un comportamiento distinto al global para sedes específicas.</p>
+          </div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-surface-50 border-b border-surface-200">
+                <th class="px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Sede</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Store Key</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Modo efectivo</th>
+                <th class="px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Override</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let sede of syncConfig.stores" class="border-b border-surface-100 hover:bg-surface-50">
+                <td class="px-5 py-3 font-medium text-surface-800">{{ sede.name }}</td>
+                <td class="px-5 py-3 font-mono text-xs text-surface-500">{{ sede.store_key }}</td>
+                <td class="px-5 py-3">
+                  <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                        [class.bg-green-100]="sede.effectiveMode === 'auto'"
+                        [class.text-green-700]="sede.effectiveMode === 'auto'"
+                        [class.bg-surface-100]="sede.effectiveMode !== 'auto'"
+                        [class.text-surface-600]="sede.effectiveMode !== 'auto'">
+                    {{ sede.effectiveMode === 'auto' ? 'Auto' : 'Manual' }}
+                  </span>
+                </td>
+                <td class="px-5 py-3">
+                  <p-dropdown
+                    [(ngModel)]="sedeOverrides[sede.id]"
+                    [options]="overrideOptions"
+                    optionLabel="label"
+                    optionValue="value"
+                    styleClass="w-44 text-sm">
+                  </p-dropdown>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Save button -->
+        <div class="flex justify-end">
+          <button pButton
+                  label="Guardar cambios"
+                  icon="pi pi-save"
+                  [loading]="savingConfig"
+                  [disabled]="savingConfig"
+                  (click)="saveConfig()">
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+</div>

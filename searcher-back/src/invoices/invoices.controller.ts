@@ -18,10 +18,18 @@ export class InvoicesController {
   ) {}
 
   @Get('all')
-  async getAllInvoices(@Query('store') store?: string) {
+  async getAllInvoices(
+    @Query('store') store?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
     try {
       this.logger.log(`🧾 Getting invoices for store: ${store}`);
-      
+
       if (!store) {
         throw new BadRequestException('El parámetro "store" es requerido');
       }
@@ -30,7 +38,15 @@ export class InvoicesController {
         throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
       }
 
-      const result = await this.invoicesService.getCachedInvoices(store);
+      const result = await this.invoicesService.getCachedInvoices(
+        store,
+        Number(page) || 1,
+        Number(limit) || 50,
+        search,
+        status,
+        dateFrom,
+        dateTo,
+      );
       
       // Si no hay datos y no es "todas", intentar cargar
       if (result.data.length === 0 && !result.updating && store?.toLowerCase() !== 'todas') {

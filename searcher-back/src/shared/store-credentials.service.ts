@@ -1,5 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+const { getStoreCredentials, getStoreApiKey } = require('../../config');
 
 export interface StoreCredentials {
   apiKey: string;
@@ -11,41 +11,19 @@ export interface StoreCredentials {
 export class StoreCredentialsService {
   private readonly storeCredentials: Map<string, StoreCredentials> = new Map();
 
-  constructor(private readonly configService: ConfigService) {
+  constructor() {
     this.initializeStoreCredentials();
   }
 
   private initializeStoreCredentials() {
-    // Credenciales para cada tienda
-    this.storeCredentials.set('pasto', {
-      apiKey: (this.configService.get<string>('ALEGRA_API_KEY') || this.configService.get<string>('ALEGRA_API_KEY')) as string,
-      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_PASTO') || this.configService.get<string>('ALEGRA_API_URL')) as string,
-      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_PASTO') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
-    });
-
-    this.storeCredentials.set('medellin', {
-      apiKey: (this.configService.get<string>('MEDELLIN_API_KEY')) as string,
-      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_MEDELLIN') || this.configService.get<string>('ALEGRA_API_URL')) as string,
-      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_MEDELLIN') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
-    });
-
-    this.storeCredentials.set('armenia', {
-      apiKey: (this.configService.get<string>('ARMENIA_API_KEY')) as string,
-      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_ARMENIA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
-      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_ARMENIA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
-    });
-
-    this.storeCredentials.set('pereira', {
-      apiKey: (this.configService.get<string>('PEREIRA_API_KEY')) as string,
-      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_PEREIRA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
-      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_PEREIRA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
-    });
-
-    this.storeCredentials.set('bogota', {
-      apiKey: (this.configService.get<string>('BOGOTA_API_KEY')) as string,
-      invoicesApiUrl: (this.configService.get<string>('ALEGRA_API_URL_BOGOTA') || this.configService.get<string>('ALEGRA_API_URL')) as string,
-      billsApiUrl: (this.configService.get<string>('ALEGRA_BILLS_API_URL_BOGOTA') || this.configService.get<string>('ALEGRA_BILLS_API_URL')) as string,
-    });
+    for (const store of ['pasto', 'medellin', 'armenia', 'pereira', 'bogota']) {
+      const credentials = getStoreCredentials(store);
+      this.storeCredentials.set(store, {
+        apiKey: credentials.apiKey || getStoreApiKey(store),
+        invoicesApiUrl: credentials.alegraApiUrl,
+        billsApiUrl: credentials.alegraBillsApiUrl,
+      });
+    }
   }
 
   getCredentials(store: string): StoreCredentials {

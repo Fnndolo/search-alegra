@@ -1,0 +1,117 @@
+<p-toast />
+
+<div class="p-4">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-xl font-semibold">Órdenes de Compra</h2>
+    <button pButton label="Nueva Orden" icon="pi pi-plus"
+      routerLink="/inventario/purchase-orders/new"></button>
+  </div>
+
+  <!-- Filters -->
+  <div class="grid grid-cols-5 gap-3 mb-4">
+    <p-dropdown
+      [(ngModel)]="filters.store"
+      [options]="storeOptions"
+      optionLabel="label"
+      optionValue="value"
+      placeholder="Tienda"
+      styleClass="w-full"
+    />
+
+    <p-dropdown
+      [(ngModel)]="filters.status"
+      [options]="statusOptions"
+      optionLabel="label"
+      optionValue="value"
+      placeholder="Estado"
+      styleClass="w-full"
+    />
+
+    <p-calendar
+      [(ngModel)]="filters.dateFrom"
+      placeholder="Desde"
+      dateFormat="yy-mm-dd"
+      styleClass="w-full"
+    />
+
+    <p-calendar
+      [(ngModel)]="filters.dateTo"
+      placeholder="Hasta"
+      dateFormat="yy-mm-dd"
+      styleClass="w-full"
+    />
+
+    <input pInputText [(ngModel)]="filters.search" placeholder="Buscar proveedor, ID, producto o SKU..." class="w-full" />
+
+    <div class="col-span-5 flex gap-2">
+      <button pButton label="Filtrar" icon="pi pi-filter" (click)="applyFilters()"></button>
+      <button pButton label="Limpiar" severity="secondary" (click)="clearFilters()"></button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <p-table
+    [value]="orders"
+    [lazy]="true"
+    [paginator]="true"
+    [rows]="limit"
+    [totalRecords]="total"
+    [loading]="loading()"
+    (onPage)="onPage($event)"
+    [rowsPerPageOptions]="[20, 50, 100]"
+    styleClass="p-datatable-sm"
+  >
+    <ng-template pTemplate="header">
+      <tr>
+        <th>ID Alegra</th>
+        <th>Tienda</th>
+        <th>Proveedor</th>
+        <th>Fecha</th>
+        <th>Total</th>
+        <th>Estado</th>
+        <th>Inventario</th>
+        <th></th>
+      </tr>
+    </ng-template>
+
+    <ng-template pTemplate="body" let-order>
+      <tr>
+        <td>{{ order.alegra_id }}</td>
+        <td>{{ order.store }}</td>
+        <td>{{ order.provider?.name }}</td>
+        <td>{{ order.date }}</td>
+        <td>{{ order.total | currency:'COP':'symbol':'1.0-0' }}</td>
+        <td>
+          <p-tag
+            [severity]="statusSeverity(order.status)"
+            [value]="statusLabel(order.status)"
+          />
+        </td>
+        <td>
+          <p-tag
+            [severity]="order.inventory_synced ? 'success' : 'danger'"
+            [value]="order.inventory_synced ? 'Sync' : 'Pendiente'"
+          />
+        </td>
+        <td>
+          <button
+            *ngIf="order.status === 'draft'"
+            pButton
+            icon="pi pi-pencil"
+            [text]="true"
+            severity="secondary"
+            (click)="editDraft(order.id)"
+            title="Editar borrador"
+          ></button>
+          <button pButton icon="pi pi-eye" [text]="true" (click)="viewDetail(order.id)" title="Ver detalle"></button>
+        </td>
+      </tr>
+    </ng-template>
+
+    <ng-template pTemplate="emptymessage">
+      <tr>
+        <td colspan="8" class="text-center text-gray-400 py-8">No hay órdenes de compra.</td>
+      </tr>
+    </ng-template>
+  </p-table>
+</div>

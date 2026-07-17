@@ -4,6 +4,8 @@ import { InvoicesService } from '../invoices/invoices.service';
 import { BillsService } from '../bills/bills.service';
 import { WebhooksService } from './webhooks.service';
 import { WebsocketsGateway } from '../websockets/websockets.gateway';
+import { InventoryStockService } from '../modules/inventory/services/inventory-stock.service';
+import { PurchaseOrdersService } from '../modules/inventory/services/purchase-orders.service';
 
 @Controller('webhooks')
 export class WebhooksController {
@@ -14,6 +16,8 @@ export class WebhooksController {
     private readonly billsService: BillsService,
     private readonly webhooksService: WebhooksService,
     private readonly websocketsGateway: WebsocketsGateway,
+    private readonly inventoryStockService: InventoryStockService,
+    private readonly purchaseOrdersService: PurchaseOrdersService,
   ) { }
 
   @Post(':store')
@@ -81,6 +85,13 @@ export class WebhooksController {
               } else if (subject.includes('edit')) {
                 this.websocketsGateway.emitInvoiceUpdated(store, invoiceData);
               }
+
+              // Discount inventory — isolated, never breaks webhook flow
+              try {
+                await this.inventoryStockService.processInvoiceSale(store, invoiceData);
+              } catch (err) {
+                this.logger.warn(`[Webhooks] inventory hook error: ${err?.message}`);
+              }
             }
             break;
 
@@ -99,6 +110,16 @@ export class WebhooksController {
                 this.websocketsGateway.emitBillCreated(store, billData);
               } else if (subject.includes('edit')) {
                 this.websocketsGateway.emitBillUpdated(store, billData);
+              }
+
+              // Sync purchase order alegra_status (fire and forget — never blocks webhook)
+              try {
+                const newStatus = (billData as any)?.status ?? message.bill?.status;
+                if (newStatus) {
+                  await this.purchaseOrdersService.updateAlegraStatus(Number(entityId), newStatus);
+                }
+              } catch (err: any) {
+                this.logger.warn(`[Webhooks] Failed to sync purchase order status for bill ${entityId}: ${err.message}`);
               }
             }
             break;

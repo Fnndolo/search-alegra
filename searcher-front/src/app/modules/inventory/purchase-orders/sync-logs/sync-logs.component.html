@@ -1,0 +1,88 @@
+<p-toast />
+
+<div class="p-4 max-w-5xl mx-auto">
+  <div class="flex justify-between items-center mb-4">
+    <div>
+      <h2 class="text-xl font-semibold">Logs de Sincronización</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Órdenes con sincronización de inventario pendiente o fallida.
+      </p>
+    </div>
+    <button
+      pButton
+      label="Actualizar"
+      icon="pi pi-refresh"
+      severity="secondary"
+      (click)="load()"
+      [disabled]="loading()"
+    ></button>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading()" class="flex justify-center py-16">
+    <p-progressSpinner />
+  </div>
+
+  <!-- Empty state -->
+  <div
+    *ngIf="!loading() && entries.length === 0"
+    class="text-center py-16 text-gray-400"
+  >
+    <i class="pi pi-check-circle text-4xl text-green-400 mb-3 block"></i>
+    <div class="font-medium">Todo sincronizado</div>
+    <div class="text-sm">No hay órdenes con inventario pendiente.</div>
+  </div>
+
+  <!-- Log entries -->
+  <div
+    *ngFor="let entry of entries"
+    class="border border-red-100 rounded-lg p-4 mb-4 bg-red-50"
+  >
+    <!-- Order header -->
+    <div class="flex justify-between items-start mb-3">
+      <div>
+        <div class="font-medium text-sm">
+          Orden #{{ entry.order.alegra_id }}
+          <span class="text-gray-400 ml-2">{{ entry.order.store }}</span>
+        </div>
+        <div class="text-xs text-gray-500">
+          {{ entry.order.provider.name }} &nbsp;·&nbsp;
+          {{ entry.order.date }} &nbsp;·&nbsp;
+          {{ entry.order.total | currency:'COP':'symbol':'1.0-0' }}
+        </div>
+      </div>
+      <div class="flex gap-2 items-center">
+        <button
+          pButton
+          icon="pi pi-eye"
+          [text]="true"
+          size="small"
+          (click)="viewDetail(entry.order.id)"
+        ></button>
+        <button
+          pButton
+          label="Reintentar"
+          icon="pi pi-refresh"
+          size="small"
+          [loading]="retrying() === entry.order.id"
+          [disabled]="retrying() !== null"
+          (click)="retry(entry.order.id)"
+        ></button>
+      </div>
+    </div>
+
+    <!-- Error info -->
+    <div class="bg-white rounded p-3 text-xs font-mono">
+      <div class="text-red-600 font-semibold mb-1">
+        Error — {{ failedAt(entry) }}
+      </div>
+      <div class="text-gray-700 mb-2">{{ errorMessage(entry) }}</div>
+      <details *ngIf="errorStack(entry)">
+        <summary class="cursor-pointer text-gray-400 hover:text-gray-600 font-sans">
+          Ver stack trace
+        </summary>
+        <pre class="mt-2 overflow-x-auto text-gray-500 text-xs whitespace-pre-wrap">{{ errorStack(entry) }}</pre>
+      </details>
+    </div>
+  </div>
+</div>

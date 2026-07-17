@@ -1,0 +1,17 @@
+export enum AlegraSync {
+  PENDING = 'PENDING',
+  SYNCED = 'SYNCED',
+  ERROR = 'ERROR',
+}
+
+export enum MovementType {
+  ENTRY = 'ENTRY',
+  EXIT = 'EXIT',
+  SALE = 'SALE',
+  RETURN = 'RETURN',
+  WARRANTY = 'WARRANTY',
+  ADJUSTMENT = 'ADJUSTMENT',
+  TRANSFER = 'TRANSFER',
+  RESERVE = 'RESERVE',
+  RESERVE_CANCELLATION = 'RESERVE_CANCELLATION',
+}

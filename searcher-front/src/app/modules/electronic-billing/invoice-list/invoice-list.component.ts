@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TableModule } from 'primeng/table';
@@ -12,6 +12,8 @@ import { MessageService } from 'primeng/api';
 import { TooltipModule } from 'primeng/tooltip';
 import { TagModule } from 'primeng/tag';
 import { DatePickerModule } from 'primeng/datepicker';
+import { Subject, Subscription } from 'rxjs';
+import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
 import { BillingWizardComponent } from '../billing-wizard/billing-wizard.component';
 import { InvoiceDetailModalComponent } from '../invoice-detail-modal/invoice-detail-modal.component';
 import { KupocellInvoiceModalComponent } from '../kupocell-invoice-modal/kupocell-invoice-modal.component';
@@ -41,15 +43,14 @@ import { ElectronicBillingService, BillingInvoice, InvoiceItem } from '../servic
   templateUrl: './invoice-list.component.html',
   styleUrl: './invoice-list.component.scss'
 })
-export class InvoiceListComponent implements OnInit {
+export class InvoiceListComponent implements OnInit, OnDestroy {
   allInvoices = signal<BillingInvoice[]>([]);
+  totalRecords = 0;
   selectedInvoices: BillingInvoice[] = [];
-  loading = signal<boolean>(true);
+  loading = signal<boolean>(false);
 
-  // --- Filters ---
   searchText = '';
 
-  // Status
   selectedStatus: string | null = null;
   statuses = [
     { label: 'Todos los estados', value: null },
@@ -57,87 +58,41 @@ export class InvoiceListComponent implements OnInit {
     { label: 'Facturada', value: 'facturada_all' }
   ];
 
-  // Store
-  selectedStore: string | null = null;
-  storeOptions = signal<{ label: string, value: string }[]>([]);
+  selectedStore = '';
+  storeOptions = [
+    { label: 'Todas las tiendas', value: '' },
+    { label: 'Smart Gadgets Pasto', value: 'pasto' },
+    { label: 'Smart Gadgets Medellín', value: 'medellin' },
+    { label: 'Smart Gadgets Armenia', value: 'armenia' },
+    { label: 'Smart Gadgets Pereira', value: 'pereira' },
+    { label: 'Smart Gadgets Bogotá', value: 'bogota' },
+  ];
 
-  // Product (multi-select with search)
   selectedProducts: string[] = [];
   productOptions = signal<{ label: string, value: string }[]>([]);
 
-  // Date range
   dateFrom: Date | null = null;
   dateTo: Date | null = null;
-
-  // Price range
   priceFrom: number | null = null;
   priceTo: number | null = null;
 
-  // Pagination
   page = 0;
   rows = 30;
 
-  // Computed filtered invoices
+  private searchSubject = new Subject<string>();
+  private searchSubscription: Subscription | null = null;
+
   filteredInvoices = computed(() => {
     let data = this.allInvoices();
-
-    // Search text
-    if (this.searchText && this.searchText.trim()) {
-      const term = this.searchText.toLowerCase().trim();
-      data = data.filter(inv =>
-        (inv.number?.toString() || '').toLowerCase().includes(term) ||
-        (inv.client || '').toLowerCase().includes(term) ||
-        (inv.productName || '').toLowerCase().includes(term) ||
-        (inv.seller || '').toLowerCase().includes(term) ||
-        (inv.clientId || '').toLowerCase().includes(term)
-      );
-    }
-
-    // Status
-    if (this.selectedStatus) {
-      if (this.selectedStatus === 'facturada_all') {
-        data = data.filter(inv => inv.billingStatus === 'facturada' || inv.billingStatus === 'facturada_sistema');
-      } else {
-        data = data.filter(inv => inv.billingStatus === this.selectedStatus);
-      }
-    }
-
-    // Store
-    if (this.selectedStore) {
-      data = data.filter(inv => inv.store === this.selectedStore);
-    }
-
-    // Products
     if (this.selectedProducts.length > 0) {
       data = data.filter(inv => this.selectedProducts.includes(inv.productName));
     }
-
-    // Date range
-    if (this.dateFrom) {
-      const from = new Date(this.dateFrom);
-      from.setHours(0, 0, 0, 0);
-      data = data.filter(inv => {
-        const d = new Date(inv.date);
-        return d >= from;
-      });
-    }
-    if (this.dateTo) {
-      const to = new Date(this.dateTo);
-      to.setHours(23, 59, 59, 999);
-      data = data.filter(inv => {
-        const d = new Date(inv.date);
-        return d <= to;
-      });
-    }
-
-    // Price range
     if (this.priceFrom !== null && this.priceFrom !== undefined) {
       data = data.filter(inv => inv.total >= this.priceFrom!);
     }
     if (this.priceTo !== null && this.priceTo !== undefined) {
       data = data.filter(inv => inv.total <= this.priceTo!);
     }
-
     return data;
   });
 
@@ -148,15 +103,37 @@ export class InvoiceListComponent implements OnInit {
 
   ngOnInit() {
     this.loadInvoices();
+    this.searchSubscription = this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged()
+    ).subscribe(() => {
+      this.page = 0;
+      this.loadInvoices();
+    });
+  }
+
+  ngOnDestroy() {
+    this.searchSubscription?.unsubscribe();
   }
 
   loadInvoices() {
     this.loading.set(true);
-
-    this.billingService.getInvoices().subscribe({
+    this.billingService.getInvoices(
+      this.selectedStatus ?? undefined,
+      this.selectedStore || undefined,
+      this.page + 1,
+      this.rows,
+      this.searchText?.trim() || undefined,
+      this.dateFrom,
+      this.dateTo,
+    ).subscribe({
       next: (res) => {
         this.allInvoices.set(res.data);
-        this.buildFilterOptions(res.data);
+        this.totalRecords = res.total;
+        const productsSet = new Set(res.data.map((inv: BillingInvoice) => inv.productName).filter(Boolean));
+        this.productOptions.set(
+          Array.from(productsSet).sort().map((p: any) => ({ label: p, value: p }))
+        );
         this.loading.set(false);
       },
       error: () => {
@@ -170,50 +147,43 @@ export class InvoiceListComponent implements OnInit {
     });
   }
 
-  private buildFilterOptions(data: BillingInvoice[]) {
-    // Store options
-    const storesSet = new Set(data.map(inv => inv.store));
-    this.storeOptions.set(
-      [{ label: 'Todas las tiendas', value: '' },
-      ...Array.from(storesSet).map(s => {
-        const display = data.find(inv => inv.store === s)?.storeDisplayName || s;
-        return { label: display, value: s };
-      })]
-    );
-
-    // Product options (unique product names)
-    const productsSet = new Set(data.map(inv => inv.productName).filter(Boolean));
-    this.productOptions.set(
-      Array.from(productsSet).sort().map(p => ({ label: p, value: p }))
-    );
+  onSearchChange() {
+    this.searchSubject.next(this.searchText);
   }
 
-  // Trigger re-computation
+  onFilterChange() {
+    this.page = 0;
+    this.loadInvoices();
+  }
+
+  onLocalFilterChange() {
+    this.allInvoices.update(v => [...v]);
+  }
+
   applyFilters() {
-    // Force signal update to recompute filtered list
     this.allInvoices.update(v => [...v]);
   }
 
   clearFilters() {
     this.searchText = '';
     this.selectedStatus = null;
-    this.selectedStore = null;
+    this.selectedStore = '';
     this.selectedProducts = [];
     this.dateFrom = null;
     this.dateTo = null;
     this.priceFrom = null;
     this.priceTo = null;
+    this.page = 0;
     this.selectedInvoices = [];
-    this.applyFilters();
+    this.loadInvoices();
   }
 
   get hasActiveFilters(): boolean {
-    return !!(this.searchText || this.selectedStatus || this.selectedStore ||
+    return !!(this.searchText?.trim() || this.selectedStatus || this.selectedStore ||
       this.selectedProducts.length > 0 || this.dateFrom || this.dateTo ||
       this.priceFrom !== null || this.priceTo !== null);
   }
 
-  /** 'pendiente' = all selected are pendiente, 'facturada' = all are facturada manually, 'facturada_sistema' = has system generated invoice, 'mixed' = mix */
   get selectionMode(): 'pendiente' | 'facturada' | 'facturada_sistema' | 'mixed' | null {
     if (this.selectedInvoices.length === 0) return null;
     const allPendiente = this.selectedInvoices.every(inv => inv.billingStatus === 'pendiente');
@@ -226,7 +196,6 @@ export class InvoiceListComponent implements OnInit {
     return 'mixed';
   }
 
-  /** Marca las facturas seleccionadas como facturada */
   markAsFacturada() {
     const selected = this.selectedInvoices;
     if (selected.length === 0) {
@@ -254,10 +223,10 @@ export class InvoiceListComponent implements OnInit {
 
   jumpToPage(event: any) {
     const targetPage = parseInt(event.target.value, 10);
-    const totalRecords = this.filteredInvoices().length;
-    const maxPage = Math.ceil(totalRecords / this.rows);
+    const maxPage = Math.ceil(this.totalRecords / this.rows);
     if (!isNaN(targetPage) && targetPage > 0 && targetPage <= maxPage) {
       this.page = targetPage - 1;
+      this.loadInvoices();
     } else {
       event.target.value = this.page + 1;
     }
@@ -265,10 +234,11 @@ export class InvoiceListComponent implements OnInit {
 
   goToPage(p: number) {
     this.page = p;
+    this.loadInvoices();
   }
 
   get totalPages(): number {
-    return Math.ceil(this.filteredInvoices().length / this.rows) || 1;
+    return Math.ceil(this.totalRecords / this.rows) || 1;
   }
 
   get visiblePages(): number[] {
@@ -282,7 +252,6 @@ export class InvoiceListComponent implements OnInit {
     return pages;
   }
 
-  /** Marca las facturas seleccionadas como pendiente */
   markAsPendiente() {
     const selected = this.selectedInvoices;
     if (selected.length === 0) {
@@ -308,7 +277,6 @@ export class InvoiceListComponent implements OnInit {
     });
   }
 
-  // Detail modal
   isDetailVisible = false;
   detailInvoice: BillingInvoice | null = null;
 
@@ -323,10 +291,8 @@ export class InvoiceListComponent implements OnInit {
       summary: 'Selección confirmada',
       detail: `${selectedItems.length} producto(s) seleccionado(s) para facturación`
     });
-    // TODO: store selected items per invoice for batch processing
   }
 
-  // Drawer
   isWizardVisible = false;
 
   openBillingDrawer() {
@@ -348,7 +314,6 @@ export class InvoiceListComponent implements OnInit {
     this.loadInvoices();
   }
 
-  // Kupocell modal
   isKupocellModalVisible = false;
 
   openKupocellModal() {

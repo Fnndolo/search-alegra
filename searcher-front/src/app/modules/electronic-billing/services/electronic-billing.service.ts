@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../../environments/environment';
@@ -49,6 +49,8 @@ export interface BillingInvoice {
 
 export interface BillingInvoicesResponse {
     total: number;
+    page: number;
+    limit: number;
     data: BillingInvoice[];
 }
 
@@ -58,12 +60,22 @@ export class ElectronicBillingService {
 
     constructor(private http: HttpClient) { }
 
-    getInvoices(status?: string, store?: string): Observable<BillingInvoicesResponse> {
-        const params: string[] = [];
-        if (status) params.push(`status=${status}`);
-        if (store) params.push(`store=${store}`);
-        const query = params.length > 0 ? `?${params.join('&')}` : '';
-        return this.http.get<BillingInvoicesResponse>(`${this.apiUrl}/electronic-billing/invoices${query}`);
+    getInvoices(
+        status?: string,
+        store?: string,
+        page = 1,
+        limit = 50,
+        search?: string,
+        dateFrom?: Date | null,
+        dateTo?: Date | null,
+    ): Observable<BillingInvoicesResponse> {
+        let params = new HttpParams().set('page', page).set('limit', limit);
+        if (status) params = params.set('status', status);
+        if (store) params = params.set('store', store);
+        if (search?.trim()) params = params.set('search', search.trim());
+        if (dateFrom) params = params.set('dateFrom', dateFrom.toLocaleDateString('en-CA'));
+        if (dateTo) params = params.set('dateTo', dateTo.toLocaleDateString('en-CA'));
+        return this.http.get<BillingInvoicesResponse>(`${this.apiUrl}/electronic-billing/invoices`, { params });
     }
 
     updateStatus(invoiceIds: { id: number, store: string }[], status: string): Observable<any> {

@@ -1,0 +1,223 @@
+<p-toast />
+
+<ng-container *ngIf="!loading(); else spinner">
+  <div class="p-4 max-w-5xl mx-auto">
+
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-4">
+      <div class="flex items-center gap-3">
+        <button pButton icon="pi pi-arrow-left" [text]="true" (click)="goBack()"></button>
+        <h2 class="text-xl font-semibold">
+          <ng-container *ngIf="order?.status === 'draft'; else normalTitle">
+            Borrador #{{ order?.id }}
+          </ng-container>
+          <ng-template #normalTitle>Orden #{{ order?.alegra_id }}</ng-template>
+        </h2>
+        <p-tag
+          [severity]="statusSeverity(order?.status)"
+          [value]="statusLabel(order?.status)"
+        />
+      </div>
+
+      <div class="flex gap-2">
+        <!-- Draft-only actions (admin + facturacion) -->
+        <ng-container *ngIf="order?.status === 'draft' && canManageDraft">
+          <button
+            pButton
+            label="Editar borrador"
+            severity="secondary"
+            icon="pi pi-pencil"
+            (click)="editDraft()"
+          ></button>
+          <button
+            pButton
+            label="Enviar a Alegra"
+            icon="pi pi-send"
+            [loading]="submittingDraft()"
+            [disabled]="deletingDraft()"
+            (click)="submitDraftAction()"
+          ></button>
+          <button
+            pButton
+            label="Eliminar borrador"
+            severity="danger"
+            icon="pi pi-trash"
+            [loading]="deletingDraft()"
+            [disabled]="submittingDraft()"
+            (click)="confirmDeleteDraft()"
+          ></button>
+        </ng-container>
+
+        <!-- Non-draft actions (admin only, hidden for drafts) -->
+        <button
+          *ngIf="isAdmin && !order?.inventory_synced && order?.status !== 'cancelled' && order?.status !== 'draft'"
+          pButton
+          label="Reintentar Inventario"
+          severity="warn"
+          icon="pi pi-refresh"
+          [loading]="retrying()"
+          (click)="retryInventory()"
+        ></button>
+        <button
+          *ngIf="isAdmin && order?.status !== 'cancelled' && order?.status !== 'draft'"
+          pButton
+          label="Anular Orden"
+          severity="danger"
+          icon="pi pi-ban"
+          (click)="openCancelDialog()"
+        ></button>
+      </div>
+    </div>
+
+    <!-- Order info -->
+    <div class="grid grid-cols-3 gap-4 mb-6 text-sm">
+      <div><span class="text-gray-500">Tienda:</span> {{ order?.store }}</div>
+      <div><span class="text-gray-500">Proveedor:</span> {{ order?.provider?.name }}</div>
+      <div><span class="text-gray-500">Fecha:</span> {{ order?.date }}</div>
+      <div><span class="text-gray-500">Vencimiento:</span> {{ order?.due_date }}</div>
+      <div><span class="text-gray-500">Bodega Alegra:</span> {{ order?.warehouse?.name }}</div>
+      <div *ngIf="order?.status !== 'draft'" class="flex items-center gap-1">
+        <span class="text-gray-500">Inventario:</span>
+        <p-tag
+          [severity]="order?.inventory_synced ? 'success' : 'danger'"
+          [value]="order?.inventory_synced ? 'Sincronizado' : 'Pendiente'"
+        />
+      </div>
+      <div *ngIf="order?.inventory_error" class="col-span-3">
+        <span class="text-gray-500">Error de inventario:</span>
+        <span class="text-red-500 ml-1 text-xs">{{ order?.inventory_error }}</span>
+      </div>
+      <div *ngIf="order?.observations" class="col-span-3">
+        <span class="text-gray-500">Observaciones:</span> {{ order?.observations }}
+      </div>
+      <div class="col-span-3 text-lg font-semibold">
+        Total: {{ order?.total | currency:'COP':'symbol':'1.0-0' }}
+      </div>
+    </div>
+
+    <p-divider />
+
+    <!-- Items -->
+    <h3 class="font-medium mb-3">Items ({{ order?.items?.length || 0 }})</h3>
+    <div *ngFor="let item of order?.items" class="border rounded-lg p-4 mb-3">
+      <div class="flex justify-between items-start mb-2">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-medium">{{ item.name }}</span>
+            <ng-container *ngIf="variantInfo(item) as v">
+              <span class="inline-flex items-center gap-1.5 bg-gray-100 rounded-full px-2 py-0.5 text-xs">
+                <span class="inline-block w-3 h-3 rounded-full border border-gray-300 shrink-0"
+                      [ngStyle]="{ background: v.color?.hexCode || '#e5e7eb' }"></span>
+                {{ v.color?.name || 'Sin color' }} — SKU {{ v.sku }}
+              </span>
+            </ng-container>
+            <span *ngIf="item.productVariantId && !variantInfo(item)" class="text-xs text-amber-600">
+              (variante no resuelta)
+            </span>
+          </div>
+          <div class="text-sm text-gray-500 mt-1">
+            Cantidad: <span class="font-medium text-gray-700">{{ item.quantity }}</span> &nbsp;|&nbsp;
+            Precio: {{ item.price | currency:'COP':'symbol':'1.0-0' }} &nbsp;|&nbsp;
+            Subtotal: {{ item.subtotal | currency:'COP':'symbol':'1.0-0' }}
+          </div>
+        </div>
+        <p-tag
+          [value]="item.requiresSerial ? 'Con serial' : 'Sin serial'"
+          [severity]="item.requiresSerial ? 'info' : 'secondary'"
+        />
+      </div>
+
+      <!-- Identifier units (IMEI/serial) -->
+      <div *ngIf="item.requiresSerial && item.units?.length" class="pl-4 border-l-2 border-gray-100 mt-2">
+        <p class="text-xs text-gray-400 mb-1">{{ item.units.length }} unidad(es) con identificador:</p>
+        <div class="flex flex-wrap gap-2">
+          <span
+            *ngFor="let unit of item.units; let j = index"
+            class="text-sm font-mono bg-gray-50 border border-gray-200 rounded px-2 py-1"
+          >
+            {{ unit.identifier || '— sin identificador —' }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Fungible: no identifiers, just quantity -->
+      <div *ngIf="!item.requiresSerial" class="pl-4 border-l-2 border-gray-100 mt-2 text-xs text-gray-400 flex items-center gap-1">
+        <i class="pi pi-info-circle"></i>
+        Producto sin identificador — se controla por cantidad ({{ item.quantity }} unidades).
+      </div>
+    </div>
+
+    <p-divider />
+
+    <!-- History -->
+    <h3 class="font-medium mb-3">Historial</h3>
+    <p-timeline [value]="history" styleClass="mb-4">
+      <ng-template pTemplate="content" let-event>
+        <div class="text-sm pb-3">
+          <div class="font-medium">{{ actionLabel(event.action) }}</div>
+          <div class="text-gray-400 text-xs">
+            {{ event.created_at | date:'dd/MM/yy HH:mm' }} — {{ event.created_by || 'sistema' }}
+          </div>
+          <pre *ngIf="event.detail" class="text-xs bg-gray-50 rounded p-2 mt-1 overflow-x-auto whitespace-pre-wrap">{{ event.detail | json }}</pre>
+        </div>
+      </ng-template>
+    </p-timeline>
+
+  </div>
+</ng-container>
+
+<ng-template #spinner>
+  <div class="flex justify-center items-center h-64">
+    <p-progressSpinner />
+  </div>
+</ng-template>
+
+<!-- Cancel dialog (non-draft, admin only) -->
+<p-dialog
+  header="Anular Orden"
+  [(visible)]="cancelDialogVisible"
+  [modal]="true"
+  [style]="{ width: '30rem' }"
+>
+  <div class="flex flex-col gap-3 pt-2">
+    <p class="text-sm text-gray-600">
+      Esta acción es irreversible. Los movimientos de inventario serán revertidos y la factura anulada en Alegra.
+    </p>
+    <div class="flex flex-col gap-1">
+      <label class="text-sm font-medium">Motivo (opcional)</label>
+      <input pInputText [(ngModel)]="cancelReason" placeholder="Ej: Error en factura" class="w-full" />
+    </div>
+  </div>
+  <ng-template pTemplate="footer">
+    <button pButton label="Volver" severity="secondary" (click)="cancelDialogVisible = false"></button>
+    <button
+      pButton
+      label="Confirmar Anulación"
+      severity="danger"
+      [loading]="cancelling()"
+      (click)="confirmCancel()"
+    ></button>
+  </ng-template>
+</p-dialog>
+
+<!-- Delete draft dialog -->
+<p-dialog
+  header="Eliminar borrador"
+  [(visible)]="deleteDraftDialogVisible"
+  [modal]="true"
+  [style]="{ width: '28rem' }"
+>
+  <p class="text-sm text-gray-600 pt-2">
+    ¿Eliminás este borrador? Esta acción no se puede deshacer.
+  </p>
+  <ng-template pTemplate="footer">
+    <button pButton label="Cancelar" severity="secondary" (click)="deleteDraftDialogVisible = false"></button>
+    <button
+      pButton
+      label="Eliminar borrador"
+      severity="danger"
+      [loading]="deletingDraft()"
+      (click)="doDeleteDraft()"
+    ></button>
+  </ng-template>
+</p-dialog>

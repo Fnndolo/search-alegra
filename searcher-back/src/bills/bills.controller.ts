@@ -12,10 +12,18 @@ export class BillsController {
   ) {}
 
   @Get('all')
-  async getAllBills(@Query('store') store: string) {
+  async getAllBills(
+    @Query('store') store: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+  ) {
     try {
       this.logger.log(`📄 Getting bills for store: ${store}`);
-      
+
       if (!store) {
         throw new BadRequestException('El parámetro "store" es requerido');
       }
@@ -24,7 +32,15 @@ export class BillsController {
         throw new BadRequestException(`Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`);
       }
 
-      const result = await this.billsDbService.getCachedBills(store);
+      const result = await this.billsDbService.getCachedBills(
+        store,
+        Number(page) || 1,
+        Number(limit) || 50,
+        search,
+        status,
+        dateFrom,
+        dateTo,
+      );
       this.logger.log(`✅ Bills retrieved for ${store}: ${result?.data?.length || 0} items`);
       this.logger.log(`📊 Bills result structure:`, {
         updating: result?.updating,

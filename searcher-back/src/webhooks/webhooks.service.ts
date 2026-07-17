@@ -1,20 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
 import { WebhookEvent } from './webhook-subscription.interface';
+const { getWebhookBaseUrl } = require('../../config');
 
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
 
   constructor(
-    private readonly configService: ConfigService,
     private readonly storeCredentialsService: StoreCredentialsService,
   ) { }
 
   async subscribeToEvents(store: string) {
     const credentials = this.storeCredentialsService.getCredentials(store);
-    const webhookUrl = this.configService.get<string>('WEBHOOK_BASE_URL');
+    const webhookUrl = getWebhookBaseUrl();
 
     if (!webhookUrl) {
       throw new Error('WEBHOOK_BASE_URL not configured');
@@ -49,8 +48,6 @@ export class WebhooksService {
         this.logger.log(`Cuerpo completo de la petición:`, JSON.stringify(subscription, null, 2));
         this.logger.log(`URL del webhook: ${subscription.url}`);
         this.logger.log(`Cuerpo de la petición: ${JSON.stringify(subscription, null, 2)}`);
-        this.logger.log(`API Key (original): ${credentials.apiKey}`);
-        this.logger.log(`API Key (base64): ${Buffer.from(credentials.apiKey).toString('base64')}`);
 
         const response = await fetch('https://api.alegra.com/api/v1/webhooks/subscriptions', {
           method: 'POST',

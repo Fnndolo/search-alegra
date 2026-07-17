@@ -123,32 +123,62 @@ export class ElectronicBillingController {
     async getBillingInvoices(
         @Query('status') status?: string,
         @Query('store') store?: string,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('search') search?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
     ) {
+        const pageNum = Number(page) || 1;
+        const limitNum = Number(limit) || 50;
+
         const qb = this.invoiceRepository
             .createQueryBuilder('invoice')
             .where('invoice."billingStatus" IS NOT NULL')
             .andWhere("invoice.data->>'status' NOT IN ('void', 'draft')");
 
         if (status) {
-            qb.andWhere('invoice."billingStatus" = :status', { status });
+            if (status === 'facturada_all') {
+                qb.andWhere('invoice."billingStatus" IN (:...statuses)', { statuses: ['facturada', 'facturada_sistema'] });
+            } else {
+                qb.andWhere('invoice."billingStatus" = :status', { status });
+            }
         }
 
         if (store && store.toLowerCase() !== 'todas') {
             qb.andWhere('invoice.store = :store', { store });
         }
 
-        qb.orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC');
+        if (search) {
+            qb.andWhere("CAST(invoice.data AS TEXT) ILIKE :search", { search: `%${search}%` });
+        }
 
-        const invoices = await qb.getMany();
+        if (dateFrom) {
+            qb.andWhere("invoice.data->>'date' >= :dateFrom", { dateFrom });
+        }
 
-        // Enriquecer facturas que no tengan info de pagos
-        await this.enrichPaymentInfo(invoices);
+        if (dateTo) {
+            qb.andWhere("invoice.data->>'date' <= :dateTo", { dateTo });
+        }
+
+        qb.orderBy("CAST(invoice.data->>'id' AS INTEGER)", 'DESC')
+          .take(limitNum)
+          .skip((pageNum - 1) * limitNum);
+
+        const [invoices, total] = await qb.getManyAndCount();
+
+        // Fire-and-forget: enrich in background, don't block the response
+        this.enrichPaymentInfo(invoices).catch(err =>
+          this.logger.error('Error enriching payment info in background', err),
+        );
 
         // Filtrar: excluir facturas que SOLO tengan pagos en efectivo
         const filtered = invoices.filter(inv => !isInvoiceCashOnly(inv.paymentBankAccounts));
 
         return {
-            total: filtered.length,
+            total,
+            page: pageNum,
+            limit: limitNum,
             data: filtered.map(inv => {
                 const items = (inv.data?.items || []).map((item: any) => ({
                     id: item.id,

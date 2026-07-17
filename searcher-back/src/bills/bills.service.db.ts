@@ -123,7 +123,15 @@ export class BillsDbService {
   /**
    * Obtiene las bills desde la base de datos con paginación
    */
-  async getCachedBills(store: string): Promise<{
+  async getCachedBills(
+    store: string,
+    page = 1,
+    limit = 50,
+    search?: string,
+    status?: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<{
     updating: boolean;
     progress: number;
     fullyLoaded: boolean;
@@ -131,10 +139,11 @@ export class BillsDbService {
     store: string;
     storeDisplayName: string;
     total: number;
+    page: number;
+    limit: number;
   }> {
-    // Si la tienda es "todas", obtener datos de todas las tiendas
     if (store?.toLowerCase() === 'todas') {
-      return this.getAllStoresBills();
+      return this.getAllStoresBills(page, limit, search, status, dateFrom, dateTo);
     }
 
     // Validar que la tienda sea válida
@@ -157,15 +166,35 @@ export class BillsDbService {
       this.logger.log(`No se inicia carga: totalRecords=${syncStatus.totalRecords}, isSyncing=${syncStatus.isSyncing}, isFullyLoaded=${syncStatus.isFullyLoaded}`);
     }
 
-    const bills = await this.billRepository.find({
-      where: { store },
-      order: { id: 'DESC', date: 'DESC' },
-    });
+    const qb = this.billRepository
+      .createQueryBuilder('bill')
+      .where('bill.store = :store', { store });
+
+    if (search) {
+      qb.andWhere("CAST(bill.data AS TEXT) ILIKE :search", { search: `%${search}%` });
+    }
+    if (status) {
+      qb.andWhere("bill.data->>'status' = :status", { status });
+    }
+    if (dateFrom) {
+      qb.andWhere("bill.data->>'date' >= :dateFrom", { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere("bill.data->>'date' <= :dateTo", { dateTo });
+    }
+
+    qb.orderBy('bill.id', 'DESC')
+      .take(limit)
+      .skip((page - 1) * limit);
+
+    const [bills, total] = await qb.getManyAndCount();
 
     return {
       updating: syncStatus.isSyncing,
-      progress: bills.length,
+      progress: syncStatus.totalRecords,
       fullyLoaded: syncStatus.isFullyLoaded,
+      page,
+      limit,
       data: bills.map(bill => {
         const d = bill.data;
         return {
@@ -195,14 +224,14 @@ export class BillsDbService {
       }),
       store: store,
       storeDisplayName: this.storeCredentialsService.getStoreDisplayName(store),
-      total: syncStatus.totalRecords
+      total,
     };
   }
 
   /**
    * Obtiene las bills de todas las tiendas combinadas
    */
-  async getAllStoresBills(): Promise<{
+  async getAllStoresBills(page = 1, limit = 50, search?: string, status?: string, dateFrom?: string, dateTo?: string): Promise<{
     updating: boolean;
     progress: number;
     fullyLoaded: boolean;
@@ -210,16 +239,34 @@ export class BillsDbService {
     store: string;
     storeDisplayName: string;
     total: number;
+    page: number;
+    limit: number;
   }> {
     const physicalStores = this.storeCredentialsService.getAllPhysicalStores();
 
-    // Obtener todas las bills de todas las tiendas
-    const allBills = await this.billRepository
+    const qb = this.billRepository
       .createQueryBuilder('bill')
-      .where('bill.store IN (:...stores)', { stores: physicalStores })
-      .orderBy('bill.datetime', 'DESC')
+      .where('bill.store IN (:...stores)', { stores: physicalStores });
+
+    if (search) {
+      qb.andWhere("CAST(bill.data AS TEXT) ILIKE :search", { search: `%${search}%` });
+    }
+    if (status) {
+      qb.andWhere("bill.data->>'status' = :status", { status });
+    }
+    if (dateFrom) {
+      qb.andWhere("bill.data->>'date' >= :dateFrom", { dateFrom });
+    }
+    if (dateTo) {
+      qb.andWhere("bill.data->>'date' <= :dateTo", { dateTo });
+    }
+
+    qb.orderBy('bill.datetime', 'DESC')
       .addOrderBy('bill.id', 'DESC')
-      .getMany();
+      .take(limit)
+      .skip((page - 1) * limit);
+
+    const [allBills, total] = await qb.getManyAndCount();
 
     // Verificar el estado de sincronización de cada tienda
     const syncStatuses = await Promise.all(
@@ -275,7 +322,9 @@ export class BillsDbService {
       }),
       store: 'todas',
       storeDisplayName: 'Todas las tiendas',
-      total: totalRecords
+      total,
+      page,
+      limit,
     };
   }
 
@@ -496,87 +545,70 @@ export class BillsDbService {
    * Obtiene las bills nuevas desde la última sincronización
    */
   private async fetchNewBills(store: string): Promise<void> {
-    this.logger.log(`🎯 ENTRANDO A fetchNewBills para ${store}`);
-
     const credentials = this.storeCredentialsService.getCredentials(store);
-    this.logger.log(`🔑 Credenciales obtenidas para ${store}`);
+    const authHeader = `Basic ${Buffer.from(credentials.apiKey).toString('base64')}`;
 
-    // Obtener la fecha de hoy para buscar bills de hoy
-    const today = new Date().toISOString().split('T')[0]; // Formato YYYY-MM-DD
-    this.logger.log(`� Buscando bills de hoy: ${today}`);
+    const lastBill = await this.billRepository.findOne({
+      where: { store },
+      order: { date: 'DESC' },
+      select: ['date'],
+    });
 
-    let newBills: any[] = [];
+    if (!lastBill) {
+      this.logger.log(`No hay bills en DB para ${store}. Delegando a carga inicial.`);
+      await this.initializeDataLoad(store);
+      return;
+    }
+
+    const dateAfter = lastBill.date instanceof Date
+      ? lastBill.date.toISOString().split('T')[0]
+      : String(lastBill.date);
+
+    this.logger.log(`Buscando bills nuevas para ${store} después de ${dateAfter}`);
+
+    const PAGE_SIZE = 30;
+    let start = 0;
+    let totalSaved = 0;
 
     try {
-      // Buscar bills de hoy usando el parámetro 'date' que funciona en Postman
-      this.logger.log(`🌐 Buscando bills con date=${today}`);
+      while (true) {
+        const response = await this.makeRequestWithRetry(() =>
+          axios.get(credentials.billsApiUrl, {
+            params: {
+              metadata: false,
+              limit: PAGE_SIZE,
+              start,
+              order_direction: 'ASC',
+              date_after: dateAfter,
+              type: 'bill',
+            },
+            headers: { Authorization: authHeader },
+          }),
+        );
 
-      // Log de las credenciales para debug
-      const authHeader = `Basic ${Buffer.from(credentials.apiKey).toString('base64')}`;
-      this.logger.log(`🔑 API Key usado: ${credentials.apiKey}`);
-      this.logger.log(`🔑 Auth header: ${authHeader}`);
-      this.logger.log(`🌐 URL completa: ${credentials.billsApiUrl}`);
+        const page: any[] = Array.isArray(response.data)
+          ? response.data
+          : (response.data.data || []);
 
-      const params = {
-        metadata: false,
-        limit: 30,
-        order_direction: 'ASC',
-        date: today,
-        type: 'bill'
-      };
-
-      this.logger.log(`📋 Parámetros enviados: ${JSON.stringify(params)}`);
-
-      const response = await this.makeRequestWithRetry(() =>
-        axios.get(credentials.billsApiUrl, {
-          params,
-          headers: { Authorization: authHeader },
-        })
-      );
-
-      this.logger.log(`📡 Respuesta completa de la API: ${JSON.stringify(response.data, null, 2)}`);
-
-      // La respuesta puede ser un array directo o un objeto con data
-      newBills = Array.isArray(response.data) ? response.data : (response.data.data || []);
-      this.logger.log(`📋 Bills encontradas para ${today}: ${newBills.length}`);
-
-      if (newBills.length > 0) {
-        // Mostrar los IDs de las bills encontradas
-        this.logger.log(`� IDs de bills de hoy: ${newBills.map(b => b.id).join(', ')}`);
-
-        // Filtrar bills que no están en la base de datos
-        const existingBillsQuery = await this.billRepository.find({
-          where: { store },
-          select: ['id']
-        });
-        const existingIds = new Set(existingBillsQuery.map(bill => parseInt(bill.id.toString())));
-
-        this.logger.log(`🔍 IDs existentes en DB (total: ${existingIds.size})`);
-
-        const beforeFilter = newBills.length;
-        newBills = newBills.filter(bill => !existingIds.has(parseInt(bill.id.toString())));
-
-        this.logger.log(`📋 Bills nuevas después de filtrar existentes: ${newBills.length} (eliminadas: ${beforeFilter - newBills.length})`);
-
-        if (newBills.length > 0) {
-          this.logger.log(`💾 Guardando ${newBills.length} bills nuevas...`);
-          this.logger.log(`🆕 IDs de bills nuevas a guardar: ${newBills.map(b => b.id).join(', ')}`);
-
-          await this.saveBillsToDB(store, newBills);
-          this.logger.log(`✅ ${newBills.length} bills nuevas agregadas para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
-
-          // Actualizar el total
-          const syncStatus = await this.getSyncStatus(store);
-          const currentCount = await this.billRepository.count({ where: { store } });
-          syncStatus.totalRecords = Math.max(syncStatus.totalRecords, currentCount);
-          await this.syncStatusRepository.save(syncStatus);
-        } else {
-          this.logger.log(`❌ No hay bills nuevas para ${this.storeCredentialsService.getStoreDisplayName(store)} - todas ya existen en DB`);
+        if (page.length > 0) {
+          await this.saveBillsToDB(store, page);
+          totalSaved += page.length;
+          this.logger.log(`Guardadas ${page.length} bills (start=${start}) para ${store}`);
         }
-      } else {
-        this.logger.log(`❌ No hay bills de hoy para ${this.storeCredentialsService.getStoreDisplayName(store)}`);
+
+        if (page.length < PAGE_SIZE) break;
+        start += PAGE_SIZE;
       }
 
+      if (totalSaved > 0) {
+        const syncStatus = await this.getSyncStatus(store);
+        syncStatus.lastSyncDatetime = new Date();
+        syncStatus.totalRecords = await this.billRepository.count({ where: { store } });
+        await this.syncStatusRepository.save(syncStatus);
+        this.logger.log(`Sync completado para ${store}: ${totalSaved} bills nuevas`);
+      } else {
+        this.logger.log(`Sin bills nuevas para ${store} desde ${dateAfter}`);
+      }
     } catch (error) {
       this.logger.error(`Error buscando bills nuevas para ${store}`, error);
       throw error;
@@ -679,18 +711,10 @@ export class BillsDbService {
   async getBillById(store: string, billId: string): Promise<any> {
     try {
       const bill = await this.billRepository.findOne({
-        where: {
-          store,
-          data: { id: billId } as any
-        }
+        where: { id: Number(billId), store },
       });
 
-      if (!bill) {
-        return null;
-      }
-
-      // Retornar los datos de la bill
-      return bill.data;
+      return bill?.data ?? null;
     } catch (error) {
       this.logger.error(`Error obteniendo cuenta por pagar ${billId} para ${store}`, error);
       return null;

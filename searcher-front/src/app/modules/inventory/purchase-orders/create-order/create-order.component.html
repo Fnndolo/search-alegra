@@ -1,0 +1,331 @@
+<p-toast />
+
+<div class="p-4 max-w-5xl mx-auto">
+  <div class="flex items-center gap-3 mb-6">
+    <a routerLink="/inventario/purchase-orders" class="text-gray-500 hover:text-gray-700">
+      <i class="pi pi-arrow-left"></i>
+    </a>
+    <h2 class="text-xl font-semibold">
+      {{ editMode ? 'Editar borrador' : 'Nueva Orden de Compra' }}
+    </h2>
+  </div>
+
+  <div *ngIf="loadingOrder()" class="text-center py-8 text-gray-400">Cargando borrador...</div>
+
+  <form *ngIf="!loadingOrder()" [formGroup]="form" (ngSubmit)="submit()">
+
+    <!-- Header fields -->
+    <div class="grid grid-cols-2 gap-4 mb-6">
+
+      <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium">Tienda *</label>
+        <p-dropdown
+          formControlName="store"
+          [options]="stores"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Seleccioná la tienda"
+          (onChange)="onStoreChange($event.value)"
+          styleClass="w-full"
+        />
+        <small *ngIf="form.get('store')?.invalid && form.get('store')?.touched" class="text-red-500">
+          Requerido
+        </small>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium flex items-center gap-2">
+          Proveedor
+          <button pButton type="button" icon="pi pi-refresh" size="small" severity="secondary" [text]="true"
+                  [loading]="syncingContacts()" [disabled]="!form.value.store"
+                  pTooltip="Actualizar proveedores desde Alegra" (click)="syncContacts()"></button>
+        </label>
+        <p-dropdown
+          formControlName="providerId"
+          [options]="providers"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Seleccioná o buscá el proveedor"
+          [filter]="true"
+          (onFilter)="searchProviders($event)"
+          (onShow)="ensureProvidersLoaded()"
+          (onChange)="onProviderSelect($event.value)"
+          styleClass="w-full"
+        />
+        <small *ngIf="submitAttempted && !form.value.providerId" class="text-red-500">
+          Proveedor requerido para crear la orden.
+        </small>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium">Fecha *</label>
+        <p-calendar
+          formControlName="date"
+          dateFormat="yy-mm-dd"
+          [showIcon]="true"
+          styleClass="w-full"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium">Fecha Vencimiento *</label>
+        <p-calendar
+          formControlName="dueDate"
+          dateFormat="yy-mm-dd"
+          [showIcon]="true"
+          styleClass="w-full"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium">Bodega *</label>
+        <p-dropdown
+          formControlName="alegraWarehouseId"
+          [options]="warehouses"
+          optionLabel="label"
+          optionValue="value"
+          placeholder="Seleccioná la bodega"
+          (onChange)="onWarehouseChange($event.value)"
+          styleClass="w-full"
+        />
+        <small *ngIf="form.get('alegraWarehouseId')?.invalid && form.get('alegraWarehouseId')?.touched" class="text-red-500">
+          Requerido
+        </small>
+      </div>
+
+      <div class="flex flex-col gap-1 col-span-2">
+        <label class="text-sm font-medium">Observaciones</label>
+        <textarea pTextarea formControlName="observations" rows="2" class="w-full"></textarea>
+      </div>
+
+    </div>
+
+    <p-divider />
+
+    <!-- Items -->
+    <div class="flex justify-between items-center mb-3">
+      <h3 class="font-medium">Items</h3>
+      <p-dropdown
+        [options]="productOptions"
+        optionLabel="label"
+        filterBy="label,skus"
+        placeholder="Buscá un producto de esta bodega o su SKU..."
+        [filter]="true"
+        [loading]="loadingProducts()"
+        (onFilter)="searchProducts($event)"
+        (onChange)="addProduct($event.value)"
+        [disabled]="!form.value.warehouseId"
+        styleClass="w-80"
+      />
+    </div>
+
+    <div *ngIf="noProductsForWarehouse && !loadingProducts()" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+      Esta bodega todavía no tiene productos con item de Alegra creado. Publicá el producto en esta bodega desde su detalle antes de agregarlo a la orden.
+    </div>
+
+    <div *ngFor="let item of items.controls; let i = index" [formGroup]="$any(item)" class="border rounded-lg p-4 mb-4">
+      <div class="grid grid-cols-4 gap-3 items-end">
+        <div class="col-span-2 flex items-center gap-2 self-center">
+          <span class="font-medium text-sm">{{ productLabel(i) }}</span>
+          <p-tag value="En Alegra" severity="success" />
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-xs">Precio unit.</label>
+          <p-inputNumber
+            formControlName="price"
+            [min]="1"
+            mode="currency"
+            currency="COP"
+            locale="es-CO"
+            styleClass="w-full"
+          />
+        </div>
+
+        <div class="flex flex-col gap-1">
+          <label class="text-xs">Cantidad</label>
+          <p-inputNumber
+            formControlName="quantity"
+            [min]="1"
+            [max]="500"
+            [showButtons]="true"
+            styleClass="w-full"
+          />
+        </div>
+
+        <div class="col-span-3 text-sm text-gray-500">
+          Subtotal: {{ subtotal(i) | currency:'COP':'symbol':'1.0-0' }}
+        </div>
+
+        <div class="flex justify-end">
+          <button
+            type="button"
+            pButton
+            icon="pi pi-trash"
+            severity="danger"
+            [text]="true"
+            (click)="removeItem(i)"
+          ></button>
+        </div>
+      </div>
+
+      <!-- Variant allocations: one block per color, each with its own quantity + IMEIs -->
+      <div class="mt-3 pl-4 border-l-2 border-gray-200 flex flex-col gap-3">
+        <div class="flex items-center justify-between">
+          <span
+            class="text-xs font-medium"
+            [class.text-gray-500]="remainingQuantity(i) === 0"
+            [class.text-amber-600]="remainingQuantity(i) !== 0"
+          >
+            {{ allocatedQuantity(i) }} de {{ item.get('quantity')?.value }} unidades repartidas entre variantes
+            <span *ngIf="remainingQuantity(i) > 0">({{ remainingQuantity(i) }} sin asignar)</span>
+            <span *ngIf="remainingQuantity(i) < 0">({{ -remainingQuantity(i) }} de más — bajá alguna cantidad)</span>
+          </span>
+          <button
+            type="button"
+            pButton
+            label="Agregar variante"
+            icon="pi pi-plus"
+            size="small"
+            [text]="true"
+            (click)="addVariantAllocation(i)"
+          ></button>
+        </div>
+
+        <div
+          *ngFor="let alloc of variantAllocations(i).controls; let a = index"
+          [formGroup]="$any(alloc)"
+          class="border border-gray-100 rounded-lg p-3 flex flex-col gap-3"
+        >
+          <div class="flex items-end gap-3">
+            <div class="flex flex-col gap-1 max-w-xs flex-1">
+              <label class="text-xs">Variante (color)</label>
+              <p-dropdown
+                formControlName="productVariantId"
+                [options]="variantOptionsFor(i, a)"
+                optionLabel="label"
+                optionValue="value"
+                placeholder="Seleccioná color/SKU"
+                styleClass="w-full"
+              >
+                <ng-template let-option pTemplate="item">
+                  <div class="flex items-center gap-2">
+                    <span class="inline-block w-3.5 h-3.5 rounded-full border border-surface-300 shrink-0"
+                          [ngStyle]="{ background: option.hexCode || '#e5e7eb' }"></span>
+                    <span>{{ option.label }}</span>
+                  </div>
+                </ng-template>
+                <ng-template let-option pTemplate="selectedItem">
+                  <div class="flex items-center gap-2" *ngIf="option">
+                    <span class="inline-block w-3.5 h-3.5 rounded-full border border-surface-300 shrink-0"
+                          [ngStyle]="{ background: option.hexCode || '#e5e7eb' }"></span>
+                    <span>{{ option.label }}</span>
+                  </div>
+                </ng-template>
+              </p-dropdown>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <label class="text-xs">Cantidad</label>
+              <p-inputNumber
+                formControlName="quantity"
+                [min]="1"
+                [max]="maxForAllocation(i, a)"
+                [showButtons]="true"
+                styleClass="w-32"
+              />
+            </div>
+
+            <button
+              type="button"
+              pButton
+              icon="pi pi-times"
+              severity="danger"
+              [text]="true"
+              *ngIf="variantAllocations(i).length > 1"
+              (click)="removeVariantAllocation(i, a)"
+            ></button>
+          </div>
+
+          <!-- Fungible (no requiere identificador): quantity only, no per-unit rows -->
+          <div
+            *ngIf="!item.get('hasIdentifier')?.value"
+            class="text-xs text-gray-500 flex items-center gap-2"
+          >
+            <i class="pi pi-info-circle"></i>
+            <span>Producto sin identificador: se ingresa por cantidad, no requiere IMEI/serial.</span>
+          </div>
+
+          <!-- Con identificador: un identificador único por unidad, para ESTA variante -->
+          <div *ngIf="item.get('hasIdentifier')?.value">
+            <p class="text-xs text-gray-500 mb-2">
+              Para celulares y tablets ingresa el IMEI. Para los demás, el serial/S-N.
+            </p>
+            <div
+              *ngFor="let unit of getUnits(i, a).controls; let j = index"
+              [formGroup]="$any(unit)"
+              class="grid grid-cols-1 gap-2 mb-2"
+            >
+              <div class="flex flex-col gap-1">
+                <label class="text-xs">Unidad {{ j + 1 }} — identificador</label>
+                <input pInputText formControlName="identifier" placeholder="IMEI / serial" class="w-full" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="items.length === 0" class="text-center text-gray-400 py-8 border rounded-lg">
+      <i class="pi pi-inbox text-4xl mb-2 block"></i>
+      Buscá un producto arriba para agregarlo.
+    </div>
+
+    <p-divider />
+
+    <div class="flex justify-between items-center mt-4">
+      <span class="text-lg font-semibold">
+        Total: {{ total | currency:'COP':'symbol':'1.0-0' }}
+      </span>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          pButton
+          label="Cancelar"
+          severity="secondary"
+          routerLink="/inventario/purchase-orders"
+        ></button>
+        <button
+          type="button"
+          pButton
+          label="Guardar borrador"
+          severity="secondary"
+          icon="pi pi-save"
+          [loading]="savingDraft()"
+          [disabled]="submitting() || submittingToAlegra()"
+          (click)="saveDraft()"
+        ></button>
+        <button
+          *ngIf="editMode"
+          type="button"
+          pButton
+          label="Enviar a Alegra"
+          icon="pi pi-send"
+          [loading]="submittingToAlegra()"
+          [disabled]="savingDraft() || submitting()"
+          (click)="submitDraftToAlegra()"
+        ></button>
+        <button
+          *ngIf="!editMode"
+          type="submit"
+          pButton
+          label="Crear Orden"
+          icon="pi pi-check"
+          [loading]="submitting()"
+          [disabled]="items.length === 0 || savingDraft()"
+        ></button>
+      </div>
+    </div>
+
+  </form>
+</div>

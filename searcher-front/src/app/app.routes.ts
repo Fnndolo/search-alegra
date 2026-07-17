@@ -25,6 +25,12 @@ export const routes: Routes = [
         loadChildren: () => import('./modules/electronic-billing/electronic-billing.module').then(m => m.ElectronicBillingModule)
       },
       {
+        path: 'inventario',
+        canActivate: [roleGuard],
+        data: { roles: ['admin', 'inventario', 'usuario'] },
+        loadChildren: () => import('./modules/inventory/inventory.module').then(m => m.InventoryModule)
+      },
+      {
         path: 'usuarios',
         canActivate: [roleGuard],
         data: { roles: ['admin'] },

@@ -23,6 +23,23 @@ import { KupoCatalogCache } from './modules/entities/kupo-catalog-cache.entity';
 import { BillingImportJob } from './modules/entities/billing-import-job.entity';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { Category } from './modules/inventory/entities/category.entity';
+import { Store } from './modules/inventory/entities/store.entity';
+import { Product } from './modules/inventory/entities/product.entity';
+import { ProductVariant } from './modules/inventory/entities/product-variant.entity';
+import { Variant } from './modules/inventory/entities/variant.entity';
+import { Warehouse } from './modules/inventory/entities/warehouse.entity';
+import { InventoryMovement } from './modules/inventory/entities/inventory-movement.entity';
+import { SystemSettings } from './modules/inventory/entities/system-settings.entity';
+import { PurchaseOrder } from './modules/inventory/entities/purchase-order.entity';
+import { PurchaseOrderHistory } from './modules/inventory/entities/purchase-order-history.entity';
+import { Contact } from './modules/inventory/entities/contact.entity';
+import { ProductWarehouseAlegraItem } from './modules/inventory/entities/product-warehouse-alegra-item.entity';
+import { AlegraProductCache } from './modules/inventory/entities/alegra-product-cache.entity';
+import { ProductImportDraft } from './modules/inventory/entities/product-import-draft.entity';
+import { Color } from './modules/inventory/entities/color.entity';
+const { getDatabaseConfig } = require('../config');
 
 
 @Module({
@@ -30,12 +47,7 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRoot({
       type: 'postgres',
-      url: process.env.DATABASE_URL, // Para Railway
-      host: process.env.DATABASE_HOST || 'localhost', // Para local
-      port: parseInt(process.env.DATABASE_PORT || '5432'),
-      username: process.env.DATABASE_USERNAME || 'postgres',
-      password: process.env.DATABASE_PASSWORD || 'postgres',
-      database: process.env.DATABASE_NAME || 'alegra_search',
+      ...getDatabaseConfig(),
       entities: [
         Invoice,
         Bill,
@@ -45,11 +57,26 @@ import { UsersModule } from './users/users.module';
         BankMapping,
         KupoCatalogCache,
         BillingImportJob,
-        User
+        User,
+        // Inventory entities (FK-dependency order: parents first)
+        Category,
+        Store,
+        Product,
+        ProductVariant,
+        Variant,
+        Warehouse,
+        InventoryMovement,
+        SystemSettings,
+        PurchaseOrder,
+        PurchaseOrderHistory,
+        Contact,
+        ProductWarehouseAlegraItem,
+        AlegraProductCache,
+        ProductImportDraft,
+        Color,
       ],
-      synchronize: true, // Solo para desarrollo
+      synchronize: process.env.NODE_ENV !== 'production',
       logging: false,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
     }),
     TypeOrmModule.forFeature([
       Invoice,
@@ -62,7 +89,8 @@ import { UsersModule } from './users/users.module';
     WebhooksModule,
     ElectronicBillingModule,
     AuthModule,
-    UsersModule
+    UsersModule,
+    InventoryModule,
   ],
   controllers: [AppController, DatabaseCleanupController],
   providers: [AppService],

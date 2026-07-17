@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TableModule } from 'primeng/table';
 import { InputTextModule } from 'primeng/inputtext';
@@ -19,7 +19,6 @@ import { MultiSelectModule } from 'primeng/multiselect';
 import { MessageService } from 'primeng/api';
 import { Subscription, Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
-import * as XLSX from 'xlsx';
 import { HighlightPipe } from '../../../core/pipes/highlight.pipe';
 import { ProfileMenuComponent } from '../../../layout/profile-menu/profile-menu.component';
 
@@ -47,6 +46,7 @@ import { ProfileMenuComponent } from '../../../layout/profile-menu/profile-menu.
   ],
   providers: [InvoiceService, SocketService, MessageService],
   templateUrl: './invoices.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   // styleUrls: ['./invoices.component.scss']
 })
 export class InvoicesComponent implements OnInit, OnDestroy {
@@ -145,7 +145,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       distinctUntilChanged()
     ).subscribe(() => {
       this.page = 0;
-      this.filterInvoicesLocal();
+      this.loadInvoices();
     });
   }
 
@@ -238,11 +238,11 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     if (this.filterValue && this.filterValue.trim() !== '') {
       this.filterInvoicesLocal();
     } else {
-      this.invoices = this.allInvoices.slice(0, this.rows);
+      this.invoices = this.allInvoices;
     }
 
     // Forzar detección de cambios
-    this.cdr.detectChanges();
+    this.cdr.markForCheck();
 
     // Remover animación después de 2 segundos
     setTimeout(() => {
@@ -250,7 +250,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       if (index > -1) {
         this.newInvoiceIds.splice(index, 1);
       }
-      this.cdr.detectChanges();
+      this.cdr.markForCheck();
     }, 2000);
   }
 
@@ -264,11 +264,11 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       if (this.filterValue && this.filterValue.trim() !== '') {
         this.filterInvoicesLocal();
       } else {
-        this.invoices = this.allInvoices.slice(this.page * this.rows, (this.page + 1) * this.rows);
+        this.invoices = this.allInvoices;
       }
 
       // Forzar detección de cambios
-      this.cdr.detectChanges();
+      this.cdr.markForCheck();
     }
   }
 
@@ -281,7 +281,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     this.deletedInvoiceIds.push(invoiceId);
 
     // Forzar detección de cambios para mostrar animación
-    this.cdr.detectChanges();
+    this.cdr.markForCheck();
 
     // Esperar a que la animación se vea antes de eliminar
     setTimeout(() => {
@@ -300,7 +300,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       if (this.filterValue && this.filterValue.trim() !== '') {
         this.filterInvoicesLocal();
       } else {
-        this.invoices = this.allInvoices.slice(this.page * this.rows, (this.page + 1) * this.rows);
+        this.invoices = this.allInvoices;
       }
 
       // Remover de la lista de eliminadas
@@ -310,13 +310,13 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       }
 
       // Forzar detección de cambios
-      this.cdr.detectChanges();
+      this.cdr.markForCheck();
     }, 800); // Duración de la animación
   }
 
   loadInvoices() {
     this.loading = true;
-    // Aquí llamaremos diferentes métodos según el tipo seleccionado
+    this.cdr.markForCheck();
     if (this.selectedInvoiceType === 'sales') {
       this.loadSalesInvoices();
     } else {
@@ -325,52 +325,43 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   }
 
   loadSalesInvoices() {
-    this.invoiceService.getAllInvoices(this.selectedStore).subscribe({
+    this.invoiceService.getAllInvoices(this.selectedStore, this.page + 1, this.rows, this.filterValue, this.selectedStatus ?? undefined, this.dateFrom, this.dateTo).subscribe({
       next: (res) => {
         this.updating = res.updating;
         this.progress = res.progress;
         this.allInvoices = res.data || [];
-        this.totalRecords = this.allInvoices.length;
+        this.invoices = this.allInvoices;
+        this.totalRecords = res.total ?? this.allInvoices.length;
         this.loading = false;
-
-        // Aplicar filtro automáticamente si hay filtros activos
-        if (this.hasActiveFilters) {
-          this.filterInvoicesLocal();
-        } else {
-          this.invoices = this.allInvoices.slice(0, this.rows);
-        }
+        this.cdr.markForCheck();
       },
-      error: (error) => {
+      error: () => {
         this.loading = false;
         this.allInvoices = [];
         this.invoices = [];
         this.totalRecords = 0;
+        this.cdr.markForCheck();
       }
     });
   }
 
   loadPurchaseInvoices() {
-    // Usando el service para facturas de compra
-    this.invoiceService.getAllPurchaseInvoices(this.selectedStore).subscribe({
+    this.invoiceService.getAllPurchaseInvoices(this.selectedStore, this.page + 1, this.rows, this.filterValue, this.selectedStatus ?? undefined, this.dateFrom, this.dateTo).subscribe({
       next: (res) => {
         this.updating = res.updating;
         this.progress = res.progress;
         this.allInvoices = res.data || [];
-        this.totalRecords = this.allInvoices.length;
+        this.invoices = this.allInvoices;
+        this.totalRecords = res.total ?? this.allInvoices.length;
         this.loading = false;
-
-        // Aplicar filtro automáticamente si hay filtros activos
-        if (this.hasActiveFilters) {
-          this.filterInvoicesLocal();
-        } else {
-          this.invoices = this.allInvoices.slice(0, this.rows);
-        }
+        this.cdr.markForCheck();
       },
-      error: (error) => {
+      error: () => {
         this.loading = false;
         this.allInvoices = [];
         this.invoices = [];
         this.totalRecords = 0;
+        this.cdr.markForCheck();
       }
     });
   }
@@ -440,7 +431,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
   onFilterChange(immediate: boolean = false) {
     if (immediate) {
       this.page = 0;
-      this.filterInvoicesLocal();
+      this.loadInvoices();
     } else {
       this.searchSubject.next(this.filterValue);
     }
@@ -457,16 +448,14 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       filtered = filtered.filter((inv) => inv.status === this.selectedStatus);
     }
 
-    // Filtros de Fecha
+    // Filtros de Fecha — comparación por string YYYY-MM-DD para evitar desfase de timezone
     if (this.dateFrom) {
-      const from = new Date(this.dateFrom);
-      from.setHours(0, 0, 0, 0);
-      filtered = filtered.filter((inv) => new Date(inv.date) >= from);
+      const fromStr = this.dateFrom.toLocaleDateString('en-CA');
+      filtered = filtered.filter((inv) => (inv.date || '') >= fromStr);
     }
     if (this.dateTo) {
-      const to = new Date(this.dateTo);
-      to.setHours(23, 59, 59, 999);
-      filtered = filtered.filter((inv) => new Date(inv.date) <= to);
+      const toStr = this.dateTo.toLocaleDateString('en-CA');
+      filtered = filtered.filter((inv) => (inv.date || '') <= toStr);
     }
 
     if (trimmedFilter !== '') {
@@ -512,9 +501,8 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       }
     }
 
-    this.totalRecords = filtered.length;
-    this.invoices = filtered.slice(this.page * this.rows, (this.page + 1) * this.rows);
-    this.cdr.detectChanges();
+    this.invoices = filtered;
+    this.cdr.markForCheck();
   }
 
   get hasActiveFilters(): boolean {
@@ -527,48 +515,30 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     this.dateFrom = null;
     this.dateTo = null;
     this.page = 0;
-    this.filterInvoicesLocal();
+    this.loadInvoices();
   }
 
   refreshInvoices() {
     this.loading = true;
-    if (this.selectedInvoiceType === 'sales') {
-      this.invoiceService.updateInvoices(this.selectedStore).subscribe((res) => {
-        this.updating = res.updating;
-        this.progress = res.progress;
-        this.allInvoices = res.data;
-        this.totalRecords = this.allInvoices.length;
-        this.loading = false;
+    this.cdr.markForCheck();
 
-        // Aplicar filtro automáticamente si hay texto de búsqueda
-        if (this.filterValue && this.filterValue.trim() !== '') {
-          this.filterInvoicesLocal();
-        } else {
-          this.invoices = this.allInvoices.slice(0, this.rows);
-        }
-      });
-    } else {
-      this.invoiceService.updatePurchaseInvoices(this.selectedStore).subscribe((res) => {
-        this.updating = res.updating;
-        this.progress = res.progress;
-        this.allInvoices = res.data;
-        this.totalRecords = this.allInvoices.length;
-        this.loading = false;
+    const update$ = this.selectedInvoiceType === 'sales'
+      ? this.invoiceService.updateInvoices(this.selectedStore)
+      : this.invoiceService.updatePurchaseInvoices(this.selectedStore);
 
-        // Aplicar filtro automáticamente si hay texto de búsqueda
-        if (this.filterValue && this.filterValue.trim() !== '') {
-          this.filterInvoicesLocal();
-        } else {
-          this.invoices = this.allInvoices.slice(0, this.rows);
-        }
-      });
-    }
+    update$.subscribe({
+      next: () => this.loadInvoices(),
+      error: () => {
+        this.loading = false;
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   loadInvoicesLazy(event: any) {
     this.page = event.first / event.rows;
     this.rows = event.rows;
-    this.filterInvoicesLocal();
+    this.loadInvoices();
   }
 
   jumpToPage(event: any) {
@@ -576,16 +546,20 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     const maxPage = Math.ceil(this.totalRecords / this.rows);
     if (!isNaN(targetPage) && targetPage > 0 && targetPage <= maxPage) {
       this.page = targetPage - 1;
-      this.filterInvoicesLocal();
+      this.loadInvoices();
     } else {
-      // Revertir valor si es inválido
       event.target.value = this.page + 1;
     }
   }
 
   goToPage(p: number) {
     this.page = p;
-    this.filterInvoicesLocal();
+    this.loadInvoices();
+  }
+
+  onRowsChange() {
+    this.page = 0;
+    this.loadInvoices();
   }
 
   syncMissingPayments() {
@@ -606,7 +580,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
         if (this.filterValue && this.filterValue.trim() !== '') {
           this.filterInvoicesLocal();
         } else {
-          this.invoices = this.allInvoices.slice(0, this.rows);
+          this.invoices = this.allInvoices;
         }
       },
       error: (err: any) => {
@@ -912,7 +886,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     return `${year}-${month}-${day}`;
   }
 
-  performExport() {
+  async performExport() {
     if (!this.exportStartDate || !this.exportEndDate) {
       alert('Por favor selecciona un rango de fechas válido');
       return;
@@ -945,7 +919,7 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       this.continueExport(startDate, endDate);
     }
   }
-  private continueExport(startDate: Date, endDate: Date) {
+  private async continueExport(startDate: Date, endDate: Date) {
     // Filtrar facturas por rango de fechas
     let filteredInvoices = this.allInvoices.filter(invoice => {
       const invoiceDate = new Date(invoice.date);
@@ -968,17 +942,17 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     });
 
     // Exportar en formato Excel
-    this.exportToExcel(filteredInvoices, maxBanks);
+    await this.exportToExcel(filteredInvoices, maxBanks);
 
     this.exportLoading = false;
     this.closeExportModal();
   }
 
-  exportToExcel(data: any[], maxBanks: number) {
-    // Preparar datos para exportación
+  async exportToExcel(data: any[], maxBanks: number) {
+    const XLSX = await import('xlsx');
+
     const exportData = this.prepareExportData(data, maxBanks);
 
-    // Crear hoja de trabajo
     const worksheet = XLSX.utils.json_to_sheet(exportData);
 
     // Aplicar filtros automáticos a los encabezados

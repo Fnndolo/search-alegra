@@ -1,0 +1,97 @@
+<p-toast></p-toast>
+
+<div class="flex flex-col gap-5">
+
+  <div *ngFor="let sede of sedes" class="bg-white border border-surface-200 rounded-xl shadow-sm overflow-hidden">
+
+    <!-- Header -->
+    <div class="px-5 py-4 border-b border-surface-100 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <h3 class="font-semibold text-surface-900">{{ sede.nombre }}</h3>
+        <span class="text-xs font-mono px-2 py-0.5 rounded-full bg-surface-100 text-surface-500">{{ sede.store_key }}</span>
+      </div>
+      <div class="flex gap-2">
+        <button pButton type="button" label="Importar de Alegra" icon="pi pi-cloud-download" size="small" severity="secondary" [outlined]="true"
+                [loading]="syncingBySede[sede.id]"
+                pTooltip="Importa y actualiza las bodegas desde tu cuenta de Alegra"
+                (click)="syncFromAlegra(sede)"></button>
+        <button pButton type="button" label="Nueva bodega" icon="pi pi-plus" size="small" [outlined]="true"
+                (click)="openCreateBodega(sede)"></button>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="loadingSede[sede.id]" class="flex items-center gap-2 px-5 py-6 text-surface-400 text-sm">
+      <i class="pi pi-spin pi-spinner"></i>
+      <span>Cargando bodegas...</span>
+    </div>
+
+    <!-- Table -->
+    <table *ngIf="!loadingSede[sede.id]" class="w-full text-sm table-fixed">
+      <thead>
+        <tr class="bg-surface-50 border-b border-surface-200">
+          <th class="w-[45%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Nombre</th>
+          <th class="w-[18%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Estado</th>
+          <th class="w-[22%] px-5 py-3 text-left text-xs font-semibold text-surface-500 uppercase tracking-wide">Alegra ID</th>
+          <th class="w-[15%] px-5 py-3 text-right text-xs font-semibold text-surface-500 uppercase tracking-wide">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let b of bodegasBySede[sede.id]" class="border-b border-surface-100 hover:bg-surface-50">
+          <td class="px-5 py-3 font-medium text-surface-800 break-words">{{ b.nombre }}</td>
+          <td class="px-5 py-3">
+            <p-tag [value]="b.activo ? 'Activo' : 'Inactivo'" [severity]="b.activo ? 'success' : 'secondary'"></p-tag>
+          </td>
+          <td class="px-5 py-3 font-mono text-xs text-surface-500 break-words">{{ b.alegra_warehouse_id ?? '—' }}</td>
+          <td class="px-5 py-3 text-right">
+            <button pButton type="button" icon="pi pi-pencil" size="small" severity="secondary" [text]="true"
+                    pTooltip="Editar" (click)="openEditBodega(b, sede.id)"></button>
+          </td>
+        </tr>
+        <tr *ngIf="!bodegasBySede[sede.id]?.length">
+          <td colspan="4" class="px-5 py-8 text-center text-surface-400 text-sm">Sin bodegas registradas.</td>
+        </tr>
+      </tbody>
+    </table>
+
+  </div>
+
+  <div *ngIf="!sedes.length" class="text-center py-12 text-surface-400 text-sm">
+    No hay sedes configuradas.
+  </div>
+
+</div>
+
+<!-- Dialog bodega -->
+<p-dialog [(visible)]="showBodegaDialog" [modal]="true" [style]="{ width: '440px' }"
+          [header]="editingBodega ? 'Editar bodega' : 'Nueva bodega'" (onHide)="showBodegaDialog=false">
+  <div class="flex flex-col gap-4 pt-1">
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Nombre *</label>
+      <input pInputText [(ngModel)]="bodegaForm.nombre" placeholder="Nombre de la bodega" class="w-full" />
+    </div>
+
+    <div *ngIf="editingBodega" class="flex items-center gap-3">
+      <p-toggleswitch [(ngModel)]="bodegaForm.activo"></p-toggleswitch>
+      <span class="text-sm text-surface-700">{{ bodegaForm.activo ? 'Activa' : 'Inactiva' }}</span>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Alegra Warehouse ID <span class="font-normal text-surface-400 normal-case">(opcional)</span></label>
+      <p-inputnumber [(ngModel)]="bodegaForm.alegraWarehouseId" [useGrouping]="false" placeholder="ID numérico" styleClass="w-full"></p-inputnumber>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Alegra Store Key <span class="font-normal text-surface-400 normal-case">(opcional)</span></label>
+      <input pInputText [(ngModel)]="bodegaForm.alegraStoreKey" placeholder="store_key" class="w-full font-mono" />
+    </div>
+
+  </div>
+  <ng-template pTemplate="footer">
+    <div class="flex justify-end gap-2 pt-2">
+      <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" (click)="showBodegaDialog=false"></button>
+      <button pButton type="button" label="Guardar" [loading]="loading" (click)="saveBodega()"></button>
+    </div>
+  </ng-template>
+</p-dialog>

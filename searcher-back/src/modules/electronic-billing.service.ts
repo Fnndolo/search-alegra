@@ -492,7 +492,7 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
 
         } catch (error) {
             const errorMsg = error.response?.data?.message || error.message;
-            this.logger.error(`❌ Error creando factura Kupocell: ${errorMsg}`);
+            this.logger.error(`❌ Error creando factura Kupocell: ${errorMsg} | full body: ${JSON.stringify(error.response?.data ?? null)}`);
 
             await this.syncLogRepo.save({
                 originalInvoiceId: `${params.originalStore}-${params.originalInvoiceId}`,
@@ -618,7 +618,8 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
                     failCount++;
                 }
             } catch (error) {
-                this.logger.error(`Error procesando factura masiva ${inv.originalInvoiceId}: ${error.message}`);
+                const apiErrorBody = error.response?.data;
+                this.logger.error(`Error procesando factura masiva ${inv.originalInvoiceId}: ${error.message} | API body: ${apiErrorBody ? JSON.stringify(apiErrorBody) : 'N/A'}`);
                 result.error = error.message;
                 failCount++;
                 const logId = String(inv.originalInvoiceId).includes('-') ? inv.originalInvoiceId : `${inv.originalStore || 'desconocida'}-${inv.originalInvoiceId}`;

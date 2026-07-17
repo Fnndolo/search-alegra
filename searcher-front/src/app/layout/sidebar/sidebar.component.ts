@@ -1,4 +1,4 @@
-import { Component, signal, computed } from '@angular/core';
+import { Component, signal, computed, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule, Router, NavigationEnd } from '@angular/router';
 import { filter } from 'rxjs/operators';
@@ -13,6 +13,7 @@ export interface MenuItem {
 }
 
 import { AuthService } from '../../core/auth/auth.service';
+import { PurchaseOrdersService } from '../../modules/inventory/purchase-orders/purchase-orders.service';
 
 @Component({
   selector: 'app-sidebar',
@@ -21,7 +22,7 @@ import { AuthService } from '../../core/auth/auth.service';
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss'
 })
-export class SidebarComponent {
+export class SidebarComponent implements OnInit {
   /** true = sidebar fijado (empuja el contenido), false = solo iconos */
   isPinned = signal<boolean>(true);
 
@@ -39,9 +40,12 @@ export class SidebarComponent {
 
   currentRoute = signal<string>('');
 
+  syncErrorCount = signal<number>(0);
+
   /** IDs de submenús abiertos */
   openSubMenus = signal<Record<string, boolean>>({
-    '/facturacion-electronica': true
+    '/facturacion-electronica': true,
+    '/inventario': true
   });
 
   menuItems: MenuItem[] = [
@@ -78,6 +82,26 @@ export class SidebarComponent {
       ]
     },
     {
+      label: 'Inventario',
+      icon: 'pi pi-box',
+      route: '/inventario/overview',
+      roles: ['admin', 'inventario', 'usuario'],
+      children: [
+        {
+          label: 'Resumen',
+          icon: 'pi pi-chart-bar',
+          route: '/inventario/overview',
+          roles: ['admin', 'inventario', 'usuario']
+        },
+        {
+          label: 'Órdenes de Compra',
+          icon: 'pi pi-shopping-cart',
+          route: '/inventario/purchase-orders',
+          roles: ['admin', 'facturacion']
+        }
+      ]
+    },
+    {
       label: 'Usuarios',
       icon: 'pi pi-users',
       route: '/usuarios',
@@ -100,12 +124,25 @@ export class SidebarComponent {
     });
   });
 
-  constructor(private router: Router, public authService: AuthService) {
+  constructor(
+    private router: Router,
+    public authService: AuthService,
+    private purchaseOrdersService: PurchaseOrdersService,
+  ) {
     this.router.events.pipe(
       filter(event => event instanceof NavigationEnd)
     ).subscribe((event: any) => {
       this.currentRoute.set(event.urlAfterRedirects);
     });
+  }
+
+  ngOnInit(): void {
+    if (this.authService.userRole() === 'admin') {
+      this.purchaseOrdersService.getSyncCount().subscribe({
+        next: ({ count }) => this.syncErrorCount.set(count),
+        error: () => {},
+      });
+    }
   }
 
   togglePin() {

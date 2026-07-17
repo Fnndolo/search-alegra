@@ -3,7 +3,6 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TableModule } from 'primeng/table';
 import { DropdownModule } from 'primeng/dropdown';
-import { InputTextModule } from 'primeng/inputtext';
 import { ButtonModule } from 'primeng/button';
 import { ToastModule } from 'primeng/toast';
 import { MessageService } from 'primeng/api';
@@ -27,7 +26,6 @@ export interface ProductMappingRow {
     FormsModule,
     TableModule,
     DropdownModule,
-    InputTextModule,
     ButtonModule,
     ToastModule
   ],
