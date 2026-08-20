@@ -54,10 +54,31 @@ export class InventoryStatsService {
   }
 
   private async getStockByStore(): Promise<StockByStore[]> {
-    // TODO: add variant→store link once ingreso tracks which store received each unit.
     const rows: { storeId: string; name: string }[] = await this.dataSource.query(
       `SELECT id AS "storeId", name FROM stores WHERE active = true ORDER BY name ASC`,
     );
-    return rows.map((r) => ({ storeId: r.storeId, name: r.name, outOfStock: 0, inStock: 0 }));
+    if (rows.length === 0) return [];
+
+    const counts = await this.variantRepo
+      .createQueryBuilder('variant')
+      .innerJoin('variant.warehouse', 'warehouse')
+      .select('warehouse.store_id', 'storeId')
+      .addSelect('SUM(CASE WHEN variant.exit_date IS NULL THEN 1 ELSE 0 END)', 'inStock')
+      .addSelect('SUM(CASE WHEN variant.exit_date IS NOT NULL THEN 1 ELSE 0 END)', 'outOfStock')
+      .where('variant.active = true')
+      .groupBy('warehouse.store_id')
+      .getRawMany<{ storeId: string; inStock: string; outOfStock: string }>();
+
+    const byStore = new Map(counts.map((c) => [c.storeId, c]));
+
+    return rows.map((r) => {
+      const c = byStore.get(r.storeId);
+      return {
+        storeId: r.storeId,
+        name: r.name,
+        inStock: c ? Number(c.inStock) : 0,
+        outOfStock: c ? Number(c.outOfStock) : 0,
+      };
+    });
   }
 }

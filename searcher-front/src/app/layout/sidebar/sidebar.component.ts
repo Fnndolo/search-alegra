@@ -88,16 +88,28 @@ export class SidebarComponent implements OnInit {
       roles: ['admin', 'inventario', 'usuario'],
       children: [
         {
-          label: 'Resumen',
+          label: 'Órdenes de Compra',
+          icon: 'pi pi-shopping-cart',
+          route: '/inventario/purchase-orders',
+          roles: ['admin', 'facturacion']
+        },
+        {
+          label: 'Panel General',
           icon: 'pi pi-chart-bar',
           route: '/inventario/overview',
           roles: ['admin', 'inventario', 'usuario']
         },
         {
-          label: 'Órdenes de Compra',
-          icon: 'pi pi-shopping-cart',
-          route: '/inventario/purchase-orders',
-          roles: ['admin', 'facturacion']
+          label: 'Contactos',
+          icon: 'pi pi-users',
+          route: '/inventario/contactos',
+          roles: ['admin', 'inventario', 'usuario']
+        },
+        {
+          label: 'Catálogos',
+          icon: 'pi pi-tags',
+          route: '/inventario/catalogos',
+          roles: ['admin', 'inventario', 'usuario']
         }
       ]
     },

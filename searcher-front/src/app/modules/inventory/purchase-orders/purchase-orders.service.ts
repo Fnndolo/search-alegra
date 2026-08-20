@@ -8,7 +8,10 @@ export interface PurchaseOrderUnit {
 }
 
 export interface PurchaseOrderItemForm {
-  alegraItemId: number;
+  productId: string;
+  /** Omitted when the product was never published in this warehouse — the backend auto-creates
+   *  the Alegra item and resolves this id before building the bill. */
+  alegraItemId?: number | null;
   /** Color/SKU variant chosen for this item — required so the backend can attribute stock correctly. */
   productVariantId?: string | null;
   name: string;

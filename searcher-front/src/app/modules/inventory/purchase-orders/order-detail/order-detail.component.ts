@@ -7,7 +7,6 @@ import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { TagModule } from 'primeng/tag';
 import { ToastModule } from 'primeng/toast';
-import { TimelineModule } from 'primeng/timeline';
 import { CardModule } from 'primeng/card';
 import { DialogModule } from 'primeng/dialog';
 import { InputTextModule } from 'primeng/inputtext';
@@ -35,7 +34,6 @@ interface VariantInfo {
     ButtonModule,
     TagModule,
     ToastModule,
-    TimelineModule,
     CardModule,
     DialogModule,
     InputTextModule,
@@ -69,6 +67,10 @@ export class OrderDetailComponent implements OnInit {
   submittingDraft = signal(false);
   deletingDraft = signal(false);
   deleteDraftDialogVisible = false;
+
+  // History timeline: clicking a marker opens the detail dialog for that event.
+  selectedHistoryEvent: any = null;
+  historyDetailVisible = false;
 
   constructor(
     private readonly route: ActivatedRoute,
@@ -261,15 +263,41 @@ export class OrderDetailComponent implements OnInit {
   actionLabel(action: string): string {
     const map: Record<string, string> = {
       created: 'Orden creada',
+      draft_created: 'Borrador creado',
+      draft_updated: 'Borrador editado',
+      submitted: 'Enviada a Alegra',
       edited: 'Orden editada',
       cancelled: 'Orden anulada',
       inventory_synced: 'Inventario sincronizado',
       serial_conflict: 'Conflicto de seriales',
       retry_inventory: 'Reintento de inventario',
       alegra_status_updated: 'Estado Alegra actualizado',
-      draft_submitted: 'Borrador enviado a Alegra',
     };
     return map[action] ?? action;
+  }
+
+  /** Timeline marker color per event type — matches the semantics already used by `p-tag` elsewhere on this page. */
+  historyDotClass(action: string): string {
+    const map: Record<string, string> = {
+      created: 'bg-blue-500',
+      submitted: 'bg-blue-500',
+      draft_created: 'bg-gray-400',
+      draft_updated: 'bg-gray-400',
+      edited: 'bg-amber-500',
+      serial_conflict: 'bg-amber-500',
+      retry_inventory: 'bg-amber-500',
+      inventory_synced: 'bg-green-500',
+      alegra_status_updated: 'bg-indigo-500',
+      cancelled: 'bg-red-500',
+    };
+    return map[action] ?? 'bg-gray-400';
+  }
+
+  // ─── History detail popup ────────────────────────────────────────────────────
+
+  openHistoryDetail(event: any): void {
+    this.selectedHistoryEvent = event;
+    this.historyDetailVisible = true;
   }
 
   goBack(): void {

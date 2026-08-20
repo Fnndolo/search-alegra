@@ -1,0 +1,48 @@
+<p-dialog
+  [(visible)]="visible"
+  [modal]="true"
+  [closable]="true"
+  (onHide)="close()"
+  [header]="header"
+  [style]="{ width: '380px' }"
+  styleClass="!rounded-xl">
+
+  <div class="flex flex-col gap-3">
+
+    <!-- What's being scanned RIGHT NOW, right over the viewfinder — where the operator is
+         actually looking, not just the dialog's own (much subtler) title bar. -->
+    <div class="flex items-center gap-2 rounded-lg px-3 py-2.5 text-white font-bold text-sm uppercase tracking-wide"
+         [class.bg-primary-600]="badgeColor === 'primary'" [class.bg-amber-500]="badgeColor === 'amber'">
+      <i class="text-lg" [ngClass]="badgeIcon"></i>
+      <span>{{ header }}</span>
+    </div>
+
+    <div class="relative w-full rounded-lg overflow-hidden bg-black min-h-[260px]">
+      <div [id]="regionId" class="w-full"></div>
+
+      <div *ngIf="state === 'requesting'" class="absolute inset-0 flex items-center justify-center text-white text-sm gap-2 bg-black/60">
+        <i class="pi pi-spin pi-spinner"></i>
+        Pidiendo acceso a la cámara...
+      </div>
+    </div>
+
+    <div *ngIf="state === 'denied' || state === 'no-camera' || state === 'error'"
+         class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex flex-col gap-2">
+      <span>{{ errorMessage }}</span>
+      <button pButton type="button" label="Reintentar" icon="pi pi-refresh" size="small" [text]="true"
+              class="self-start" (click)="retry()"></button>
+    </div>
+
+    <p *ngIf="state === 'scanning'" class="text-xs text-surface-500 text-center">
+      Apuntá la cámara al código de barras.
+    </p>
+
+  </div>
+
+  <ng-template pTemplate="footer">
+    <div class="flex justify-end pt-2">
+      <button pButton type="button" label="Cerrar" icon="pi pi-times" severity="secondary" [text]="true" (click)="close()"></button>
+    </div>
+  </ng-template>
+
+</p-dialog>

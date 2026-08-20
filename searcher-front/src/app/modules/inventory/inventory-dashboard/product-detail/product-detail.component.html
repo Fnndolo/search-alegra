@@ -1,6 +1,6 @@
 <p-toast></p-toast>
 
-<div class="p-4 max-w-5xl mx-auto flex flex-col gap-4">
+<div class="p-3 md:p-4 max-w-full flex flex-col gap-4">
 
   <!-- Header -->
   <div class="flex items-center gap-3">
@@ -21,8 +21,8 @@
 
     <!-- Main card -->
     <p-card>
-      <div class="flex flex-wrap justify-between gap-4">
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-3 flex-1">
+      <div class="flex flex-col md:flex-row md:flex-wrap md:justify-between gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-3 flex-1">
           <div>
             <p class="text-xs uppercase tracking-wide text-surface-400 font-semibold mb-1">Categoría</p>
             <p class="text-sm text-surface-800">{{ producto.category.name || '—' }}</p>
@@ -45,7 +45,7 @@
           </div>
         </div>
 
-        <div class="flex gap-2 items-start">
+        <div class="flex flex-wrap gap-2 items-start">
           <button pButton label="Editar" icon="pi pi-pencil" severity="secondary" [outlined]="true"
                   (click)="openEditProduct()"></button>
           <button pButton label="Eliminar producto" icon="pi pi-trash" severity="danger" [outlined]="true"
@@ -60,7 +60,8 @@
         <button pButton type="button" label="Agregar variante" icon="pi pi-plus" size="small"
                 (click)="openAddVariant()"></button>
       </div>
-      <p-table [value]="producto.variants" dataKey="id" [expandedRowKeys]="expandedRows" styleClass="p-datatable-sm">
+      <div class="overflow-x-auto">
+      <p-table [value]="producto.variants" dataKey="id" [expandedRowKeys]="expandedRows" styleClass="p-datatable-sm" [tableStyle]="{ 'min-width': '640px' }">
         <ng-template pTemplate="header">
           <tr>
             <th style="width: 3rem"></th>
@@ -102,7 +103,7 @@
           </tr>
         </ng-template>
 
-        <ng-template pTemplate="rowexpansion" let-variant>
+        <ng-template pTemplate="expandedrow" let-variant>
           <tr>
             <td colspan="6" class="bg-surface-50 p-0">
               <div class="p-4">
@@ -136,6 +137,7 @@
           </tr>
         </ng-template>
       </p-table>
+      </div>
     </p-card>
 
     <!-- Alegra publish status per bodega -->
@@ -145,7 +147,8 @@
         <span class="text-sm">Cargando estado en Alegra...</span>
       </div>
 
-      <p-table *ngIf="!loadingAlegraStatus" [value]="alegraStatus" styleClass="p-datatable-sm">
+      <div *ngIf="!loadingAlegraStatus" class="overflow-x-auto">
+      <p-table [value]="alegraStatus" styleClass="p-datatable-sm" [tableStyle]="{ 'min-width': '520px' }">
         <ng-template pTemplate="header">
           <tr>
             <th class="text-xs uppercase tracking-wide text-surface-500 font-semibold">Bodega</th>
@@ -179,6 +182,7 @@
           </tr>
         </ng-template>
       </p-table>
+      </div>
     </p-card>
 
   </ng-container>
@@ -187,6 +191,7 @@
   <!-- Dialog: editar producto                        -->
   <!-- ══════════════════════════════════════════════ -->
   <p-dialog [(visible)]="showEditProduct" [modal]="true" [style]="{ width: '480px' }"
+            [breakpoints]="{ '960px': '75vw', '640px': '95vw' }"
             header="Editar producto" (onHide)="showEditProduct=false">
     <div class="flex flex-col gap-4 pt-2">
       <div>
@@ -229,6 +234,7 @@
   <!-- Dialog: confirmar eliminación de producto      -->
   <!-- ══════════════════════════════════════════════ -->
   <p-dialog [(visible)]="showDeleteProduct" [modal]="true" [style]="{ width: '420px' }"
+            [breakpoints]="{ '960px': '75vw', '640px': '95vw' }"
             header="Eliminar producto" (onHide)="showDeleteProduct=false">
     <div class="flex items-start gap-3 pt-1">
       <i class="pi pi-exclamation-triangle text-2xl text-amber-500 mt-0.5"></i>
@@ -249,6 +255,7 @@
   <!-- Dialog: editar variante                        -->
   <!-- ══════════════════════════════════════════════ -->
   <p-dialog [(visible)]="showEditVariant" [modal]="true" [style]="{ width: '420px' }"
+            [breakpoints]="{ '960px': '75vw', '640px': '95vw' }"
             [header]="editingVariant ? 'Editar variante' : 'Agregar variante'" (onHide)="showEditVariant=false">
     <div class="flex flex-col gap-4 pt-2">
       <div>
@@ -258,7 +265,11 @@
       </div>
       <div>
         <label class="text-xs uppercase tracking-wide text-surface-500 font-semibold block mb-1">SKU</label>
-        <input pInputText [(ngModel)]="variantForm.sku" class="w-full" />
+        <div class="flex gap-1">
+          <input pInputText [(ngModel)]="variantForm.sku" class="w-full" />
+          <button pButton type="button" icon="pi pi-camera" severity="secondary" [text]="true"
+                  pTooltip="Escanear código de barras" (click)="openSkuScanner()"></button>
+        </div>
       </div>
       <div class="flex items-center justify-between">
         <span class="text-sm text-surface-700">Activa</span>
@@ -273,10 +284,17 @@
     </ng-template>
   </p-dialog>
 
+  <app-barcode-scanner-modal
+    [(visible)]="scannerVisible"
+    header="Escanear SKU"
+    (scanned)="onSkuScanned($event)">
+  </app-barcode-scanner-modal>
+
   <!-- ══════════════════════════════════════════════ -->
   <!-- Dialog: confirmar eliminación de variante      -->
   <!-- ══════════════════════════════════════════════ -->
   <p-dialog [(visible)]="showDeleteVariant" [modal]="true" [style]="{ width: '420px' }"
+            [breakpoints]="{ '960px': '75vw', '640px': '95vw' }"
             header="Eliminar variante" (onHide)="showDeleteVariant=false">
     <div class="flex items-start gap-3 pt-1">
       <i class="pi pi-exclamation-triangle text-2xl text-amber-500 mt-0.5"></i>

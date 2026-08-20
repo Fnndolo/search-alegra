@@ -130,7 +130,7 @@ export class ProductAlegraPublishService {
     const payload: Record<string, any> = {
       name: itemName,
       type: 'product',
-      price: 0,
+      price: product.sale_price ?? 0,
       inventory: {
         unit: 'unit',
         unitCost: 0,
@@ -230,6 +230,16 @@ export class ProductAlegraPublishService {
       });
   }
 
+  /**
+   * A concurrent request for the SAME (product, warehouse) — e.g. a double-tap on "Enviar a
+   * Alegra" over a slow mobile connection — can race this insert: both calls pass the step-1
+   * idempotency check before either commits, both create/adopt the same Alegra item, and the
+   * second insert here hits `UQ_pwai_store_alegra_item`. Recover by returning the mapping the
+   * other request just committed instead of surfacing a raw constraint-violation 500. If no such
+   * mapping exists, this alegra_item_id genuinely belongs to a DIFFERENT local product (e.g. two
+   * products sharing the same name in this warehouse) — that's a real data conflict, not a race,
+   * so it's re-thrown as-is.
+   */
   private async saveMapping(
     product: Product,
     warehouse: Warehouse,
@@ -244,6 +254,23 @@ export class ProductAlegraPublishService {
       alegra_item_id: alegraItemId,
       alegra_name: alegraName,
     });
-    return this.pwaiRepo.save(mapping);
+    try {
+      return await this.pwaiRepo.save(mapping);
+    } catch (err: any) {
+      if (err?.code === '23505' && err?.constraint === 'UQ_pwai_store_alegra_item') {
+        const existing = await this.pwaiRepo.findOne({
+          where: { product_id: product.id, warehouse_id: warehouse.id },
+        });
+        if (existing) return existing;
+
+        const ownedBy = await this.pwaiRepo.findOne({ where: { store_key: storeKey, alegra_item_id: alegraItemId } });
+        throw new BadRequestException(
+          `El item de Alegra "${alegraName}" (id ${alegraItemId}) ya está vinculado a otro producto local` +
+            (ownedBy ? ` (product_id ${ownedBy.product_id})` : '') +
+            `. Revisá si hay productos duplicados con el mismo nombre en esta bodega.`,
+        );
+      }
+      throw err;
+    }
   }
 }

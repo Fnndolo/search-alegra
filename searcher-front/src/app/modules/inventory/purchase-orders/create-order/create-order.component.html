@@ -15,7 +15,7 @@
   <form *ngIf="!loadingOrder()" [formGroup]="form" (ngSubmit)="submit()">
 
     <!-- Header fields -->
-    <div class="grid grid-cols-2 gap-4 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 
       <div class="flex flex-col gap-1">
         <label class="text-sm font-medium">Tienda *</label>
@@ -93,7 +93,7 @@
         </small>
       </div>
 
-      <div class="flex flex-col gap-1 col-span-2">
+      <div class="flex flex-col gap-1 md:col-span-2">
         <label class="text-sm font-medium">Observaciones</label>
         <textarea pTextarea formControlName="observations" rows="2" class="w-full"></textarea>
       </div>
@@ -103,20 +103,32 @@
     <p-divider />
 
     <!-- Items -->
-    <div class="flex justify-between items-center mb-3">
+    <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-3">
       <h3 class="font-medium">Items</h3>
-      <p-dropdown
-        [options]="productOptions"
-        optionLabel="label"
-        filterBy="label,skus"
-        placeholder="Buscá un producto de esta bodega o su SKU..."
-        [filter]="true"
-        [loading]="loadingProducts()"
-        (onFilter)="searchProducts($event)"
-        (onChange)="addProduct($event.value)"
-        [disabled]="!form.value.warehouseId"
-        styleClass="w-80"
-      />
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Un lector físico de código de barras escribe el SKU acá y manda Enter solo (sin
+             resaltar ninguna opción primero) — onProductDropdownEnter matchea ese texto a mano en
+             vez de depender de la selección nativa de PrimeNG, así sirve tanto para tipear a mano
+             como para escanear, en el mismo campo. -->
+        <p-dropdown
+          #productPicker
+          [options]="productOptions"
+          optionLabel="label"
+          filterBy="label,skus"
+          placeholder="Buscá un producto de esta bodega, su SKU, o escaneá..."
+          [filter]="true"
+          [loading]="loadingProducts()"
+          (onFilter)="searchProducts($event)"
+          (onChange)="addProduct($event.value); productPicker.writeValue(null)"
+          (keydown.enter)="onProductDropdownEnter($event)"
+          [disabled]="!form.value.warehouseId"
+          styleClass="flex-1 min-w-0 md:flex-none md:w-80"
+        />
+        <button pButton type="button" icon="pi pi-camera" severity="secondary" [text]="true"
+                class="shrink-0"
+                pTooltip="Escanear código de barras del producto (cámara)" [disabled]="!form.value.warehouseId"
+                (click)="openProductScanner()"></button>
+      </div>
     </div>
 
     <div *ngIf="noProductsForWarehouse && !loadingProducts()" class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
@@ -124,10 +136,17 @@
     </div>
 
     <div *ngFor="let item of items.controls; let i = index" [formGroup]="$any(item)" class="border rounded-lg p-4 mb-4">
-      <div class="grid grid-cols-4 gap-3 items-end">
-        <div class="col-span-2 flex items-center gap-2 self-center">
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+        <div class="md:col-span-2 flex items-center gap-2 self-center">
           <span class="font-medium text-sm">{{ productLabel(i) }}</span>
-          <p-tag value="En Alegra" severity="success" />
+          <p-tag
+            *ngIf="isPublishedInAlegra(i); else notPublishedTag"
+            value="En Alegra"
+            severity="success"
+          />
+          <ng-template #notPublishedTag>
+            <p-tag value="Se creará en Alegra" severity="info" />
+          </ng-template>
         </div>
 
         <div class="flex flex-col gap-1">
@@ -153,7 +172,7 @@
           />
         </div>
 
-        <div class="col-span-3 text-sm text-gray-500">
+        <div class="md:col-span-2 lg:col-span-3 text-sm text-gray-500">
           Subtotal: {{ subtotal(i) | currency:'COP':'symbol':'1.0-0' }}
         </div>
 
@@ -181,15 +200,51 @@
             <span *ngIf="remainingQuantity(i) > 0">({{ remainingQuantity(i) }} sin asignar)</span>
             <span *ngIf="remainingQuantity(i) < 0">({{ -remainingQuantity(i) }} de más — bajá alguna cantidad)</span>
           </span>
-          <button
-            type="button"
-            pButton
-            label="Agregar variante"
-            icon="pi pi-plus"
-            size="small"
-            [text]="true"
-            (click)="addVariantAllocation(i)"
-          ></button>
+          <div class="flex items-center gap-1">
+            <button
+              type="button"
+              pButton
+              label="Agregar variante"
+              icon="pi pi-plus"
+              size="small"
+              [text]="true"
+              (click)="addVariantAllocation(i)"
+            ></button>
+            <button
+              type="button"
+              pButton
+              label="Crear color nuevo"
+              icon="pi pi-palette"
+              size="small"
+              [text]="true"
+              severity="secondary"
+              (click)="openCreateVariant(i)"
+            ></button>
+          </div>
+        </div>
+
+        <!-- Inline "crear variante nueva" form — same app-color-picker used everywhere else.
+             Ancho fijo y campos apilados (no en una sola fila comprimida) para que respire. -->
+        <div *ngIf="creatingVariantForItem === i"
+             class="border border-primary-200 bg-primary-50/40 rounded-lg p-4 md:p-5 flex flex-col gap-4 w-full  max-w-full">
+          <span class="text-sm font-semibold text-surface-700">Crear variante de color nueva para este producto</span>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-surface-500 uppercase tracking-wide">Color</label>
+            <app-color-picker [initialColor]="newVariantPreview" (colorSelected)="onNewVariantColorSelected($event)"></app-color-picker>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-surface-500 uppercase tracking-wide">SKU</label>
+            <input pInputText type="text" [(ngModel)]="newVariantSku" [ngModelOptions]="{standalone: true}" placeholder="SKU" class="w-full" />
+          </div>
+
+          <div class="flex items-center justify-end gap-2 mt-1">
+            <button type="button" pButton label="Cancelar" size="small" [text]="true" severity="secondary"
+                    (click)="cancelCreateVariant()"></button>
+            <button type="button" pButton label="Crear y usar" icon="pi pi-check" size="small"
+                    [loading]="creatingVariant" (click)="saveNewVariant(i)"></button>
+          </div>
         </div>
 
         <div
@@ -197,8 +252,8 @@
           [formGroup]="$any(alloc)"
           class="border border-gray-100 rounded-lg p-3 flex flex-col gap-3"
         >
-          <div class="flex items-end gap-3">
-            <div class="flex flex-col gap-1 max-w-xs flex-1">
+          <div class="flex flex-col md:flex-row md:items-end gap-3">
+            <div class="flex flex-col gap-1 md:max-w-xs flex-1">
               <label class="text-xs">Variante (color)</label>
               <p-dropdown
                 formControlName="productVariantId"
@@ -225,26 +280,28 @@
               </p-dropdown>
             </div>
 
-            <div class="flex flex-col gap-1">
-              <label class="text-xs">Cantidad</label>
-              <p-inputNumber
-                formControlName="quantity"
-                [min]="1"
-                [max]="maxForAllocation(i, a)"
-                [showButtons]="true"
-                styleClass="w-32"
-              />
-            </div>
+            <div class="flex items-end gap-2">
+              <div class="flex flex-col gap-1">
+                <label class="text-xs">Cantidad</label>
+                <p-inputNumber
+                  formControlName="quantity"
+                  [min]="1"
+                  [max]="maxForAllocation(i, a)"
+                  [showButtons]="true"
+                  styleClass="w-32"
+                />
+              </div>
 
-            <button
-              type="button"
-              pButton
-              icon="pi pi-times"
-              severity="danger"
-              [text]="true"
-              *ngIf="variantAllocations(i).length > 1"
-              (click)="removeVariantAllocation(i, a)"
-            ></button>
+              <button
+                type="button"
+                pButton
+                icon="pi pi-times"
+                severity="danger"
+                [text]="true"
+                *ngIf="variantAllocations(i).length > 1"
+                (click)="removeVariantAllocation(i, a)"
+              ></button>
+            </div>
           </div>
 
           <!-- Fungible (no requiere identificador): quantity only, no per-unit rows -->
@@ -268,7 +325,13 @@
             >
               <div class="flex flex-col gap-1">
                 <label class="text-xs">Unidad {{ j + 1 }} — identificador</label>
-                <input pInputText formControlName="identifier" placeholder="IMEI / serial" class="w-full" />
+                <div class="flex gap-1">
+                  <input pInputText formControlName="identifier" placeholder="IMEI / serial" class="w-full"
+                         [attr.data-imei-key]="i + '-' + a + '-' + j"
+                         (keydown.enter)="onImeiEnter($event)" />
+                  <button pButton type="button" icon="pi pi-camera" severity="secondary" [text]="true"
+                          pTooltip="Escanear IMEI/serial" (click)="openUnitScanner(i, a, j)"></button>
+                </div>
               </div>
             </div>
           </div>
@@ -283,11 +346,11 @@
 
     <p-divider />
 
-    <div class="flex justify-between items-center mt-4">
+    <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mt-4">
       <span class="text-lg font-semibold">
         Total: {{ total | currency:'COP':'symbol':'1.0-0' }}
       </span>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <button
           type="button"
           pButton
@@ -302,7 +365,7 @@
           severity="secondary"
           icon="pi pi-save"
           [loading]="savingDraft()"
-          [disabled]="submitting() || submittingToAlegra()"
+          [disabled]="savingDraft() || submitting() || submittingToAlegra()"
           (click)="saveDraft()"
         ></button>
         <button
@@ -312,7 +375,7 @@
           label="Enviar a Alegra"
           icon="pi pi-send"
           [loading]="submittingToAlegra()"
-          [disabled]="savingDraft() || submitting()"
+          [disabled]="savingDraft() || submitting() || submittingToAlegra()"
           (click)="submitDraftToAlegra()"
         ></button>
         <button
@@ -322,10 +385,19 @@
           label="Crear Orden"
           icon="pi pi-check"
           [loading]="submitting()"
-          [disabled]="items.length === 0 || savingDraft()"
+          [disabled]="items.length === 0 || savingDraft() || submitting() || submittingToAlegra()"
         ></button>
       </div>
     </div>
 
   </form>
 </div>
+
+<app-barcode-scanner-modal
+  [(visible)]="scannerVisible"
+  [header]="scannerHeader"
+  [badgeIcon]="scannerBadgeIcon"
+  [badgeColor]="scannerBadgeColor"
+  [continuous]="scannerContinuous"
+  (scanned)="onBarcodeScanned($event)">
+</app-barcode-scanner-modal>

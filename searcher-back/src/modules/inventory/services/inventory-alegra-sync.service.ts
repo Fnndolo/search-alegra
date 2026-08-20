@@ -10,13 +10,19 @@ export class InventoryAlegraSync {
   async updateItemInAlegra(
     storeKey: string,
     alegraItemId: number,
-    changes: { price?: number; cost?: number; activo?: boolean },
+    changes: { name?: string; price?: number; cost?: number; activo?: boolean },
   ): Promise<void> {
     const client = this.factory.getClient(storeKey);
 
     const body: Record<string, any> = {};
+    if (changes.name !== undefined) {
+      body.name = changes.name;
+    }
     if (changes.price !== undefined) {
-      body.price = [{ id: 1, value: changes.price }];
+      // Alegra's price list shape (confirmed against a real GET /items response): each entry uses
+      // `idPriceList` + `price`, not `id`/`value` — mismatched field names here previously meant
+      // this update was silently ignored by Alegra (it returns 200 but the price never changes).
+      body.price = [{ idPriceList: '1', price: changes.price }];
     }
     if (changes.cost !== undefined) {
       body.inventory = { unitCost: changes.cost };

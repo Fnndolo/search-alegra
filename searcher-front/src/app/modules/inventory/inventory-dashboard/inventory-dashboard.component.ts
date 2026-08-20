@@ -12,7 +12,6 @@ import { TooltipModule } from 'primeng/tooltip';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
 import { CheckboxModule } from 'primeng/checkbox';
-import { SelectButtonModule } from 'primeng/selectbutton';
 import { MessageService } from 'primeng/api';
 import { Subject } from 'rxjs';
 import { debounceTime, distinctUntilChanged } from 'rxjs/operators';
@@ -25,8 +24,9 @@ import { CatalogoPanelComponent } from './catalogo-panel/catalogo-panel.componen
 import { BodegaPanelComponent } from './bodega-panel/bodega-panel.component';
 import { ImportDraftsPanelComponent } from './import-drafts-panel/import-drafts-panel.component';
 import { ColorPanelComponent } from './color-panel/color-panel.component';
+import { SaleSyncLogsComponent } from '../sale-sync-logs/sale-sync-logs.component';
 
-type Tab = 'productos' | 'configuracion' | 'catalogos';
+type Tab = 'productos' | 'catalogos' | 'pendientes';
 
 @Component({
   selector: 'app-inventory-dashboard',
@@ -35,10 +35,10 @@ type Tab = 'productos' | 'configuracion' | 'catalogos';
     CommonModule, FormsModule, TableModule, ButtonModule,
     InputTextModule, DropdownModule, TagModule, ToastModule,
     TooltipModule, IconFieldModule, InputIconModule, CheckboxModule,
-    SelectButtonModule, ProductFormModalComponent,
+    ProductFormModalComponent,
     IngresoModalComponent, ImeiSearchModalComponent,
     CatalogoPanelComponent, BodegaPanelComponent,
-    ImportDraftsPanelComponent, ColorPanelComponent
+    ImportDraftsPanelComponent, ColorPanelComponent, SaleSyncLogsComponent
   ],
   providers: [MessageService],
   templateUrl: './inventory-dashboard.component.html',
@@ -70,21 +70,6 @@ export class InventoryDashboardComponent implements OnInit {
 
   categorias: any[] = [];
 
-  // ── CONFIGURACION TAB ────────────────────────────────
-  syncConfig: any = null;
-  loadingConfig = false;
-  savingConfig = false;
-  globalModeOptions = [
-    { label: 'Auto', value: 'auto' },
-    { label: 'Manual', value: 'manual' }
-  ];
-  sedeOverrides: { [sedeId: string]: 'auto' | 'manual' | null } = {};
-  overrideOptions = [
-    { label: 'Heredar global', value: null },
-    { label: 'Auto', value: 'auto' },
-    { label: 'Manual', value: 'manual' }
-  ];
-
   constructor(
     private api: InventoryApiService,
     private messageService: MessageService,
@@ -94,6 +79,12 @@ export class InventoryDashboardComponent implements OnInit {
   ) {}
 
   ngOnInit() {
+    // Restore the last sede picked for this tab — without this, navigating into a product's
+    // detail and back (a full route change, so this component gets destroyed/recreated) silently
+    // resets it, forcing the user to re-pick the sede on every visit.
+    const savedSede = sessionStorage.getItem('inventory_selectedSedeFilter');
+    if (savedSede) this.selectedSedeFilter = savedSede;
+
     this.loadSedes();
     this.loadCategorias();
 
@@ -103,7 +94,7 @@ export class InventoryDashboardComponent implements OnInit {
     // Detect active tab from URL segment
     this.route.url.subscribe(segments => {
       const section = segments[0]?.path as Tab;
-      if (section && ['productos', 'configuracion', 'catalogos'].includes(section)) {
+      if (section && ['productos', 'catalogos', 'pendientes'].includes(section)) {
         this.activateTab(section);
       } else {
         this.activateTab('productos');
@@ -170,6 +161,11 @@ export class InventoryDashboardComponent implements OnInit {
   }
 
   onSedeFilterChange() {
+    if (this.selectedSedeFilter) {
+      sessionStorage.setItem('inventory_selectedSedeFilter', this.selectedSedeFilter);
+    } else {
+      sessionStorage.removeItem('inventory_selectedSedeFilter');
+    }
     this.page = 0;
     this.loadProductos();
   }
@@ -216,28 +212,6 @@ export class InventoryDashboardComponent implements OnInit {
     this.showIngreso = true;
   }
 
-  syncingContacts = false;
-  contactsSyncResult = '';
-
-  syncAllContacts() {
-    this.syncingContacts = true;
-    this.contactsSyncResult = '';
-    this.api.syncAllContacts().subscribe({
-      next: (r) => {
-        this.syncingContacts = false;
-        const errores = r.perStore.filter((s) => s.error).length;
-        this.contactsSyncResult = `${r.total} contactos sincronizados en ${r.perStore.length} sede(s)` + (errores ? ` · ${errores} con error` : '');
-        this.messageService.add({ severity: errores ? 'warn' : 'success', summary: 'Contactos sincronizados', detail: this.contactsSyncResult });
-        this.cdr.markForCheck();
-      },
-      error: () => {
-        this.syncingContacts = false;
-        this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron sincronizar los contactos' });
-        this.cdr.markForCheck();
-      },
-    });
-  }
-
   /** "Sin identificador" = stock fungible por cantidad. Depende directo del producto, no de la categoría. */
   esSinVariantes(producto: any): boolean {
     return producto?.hasIdentifier === false;
@@ -252,48 +226,6 @@ export class InventoryDashboardComponent implements OnInit {
     this.loadProductos();
   }
 
-  // ── CONFIGURACION ─────────────────────────────────────
-  loadSyncConfig() {
-    this.loadingConfig = true;
-    this.api.getSyncConfig().subscribe({
-      next: (data) => {
-        this.loadingConfig = false;
-        this.syncConfig = data;
-        this.sedeOverrides = {};
-        if (data?.stores) {
-          data.stores.forEach((s: any) => {
-            this.sedeOverrides[s.id] = s.override ?? null;
-          });
-        }
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        this.loadingConfig = false;
-        this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar la configuración' });
-        this.cdr.detectChanges();
-      }
-    });
-  }
-
-  saveConfig() {
-    if (!this.syncConfig) return;
-    this.savingConfig = true;
-    const overrides = Object.entries(this.sedeOverrides).map(([storeId, mode]) => ({ storeId, mode }));
-    this.api.updateSyncConfig({ globalMode: this.syncConfig.globalMode, storeOverrides: overrides }).subscribe({
-      next: (data) => {
-        this.savingConfig = false;
-        this.syncConfig = data;
-        this.messageService.add({ severity: 'success', summary: 'Configuración guardada' });
-        this.cdr.detectChanges();
-      },
-      error: () => {
-        this.savingConfig = false;
-        this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar la configuración' });
-        this.cdr.detectChanges();
-      }
-    });
-  }
-
   // ── TAB SWITCHING ─────────────────────────────────────
   setTab(tab: Tab) {
     this.router.navigate(['/inventario', tab]);
@@ -303,9 +235,6 @@ export class InventoryDashboardComponent implements OnInit {
     this.activeTab = tab;
     if (tab === 'productos' && this.productos.length === 0 && this.selectedSedeFilter) {
       this.loadProductos();
-    }
-    if (tab === 'configuracion' && !this.syncConfig) {
-      this.loadSyncConfig();
     }
   }
 }

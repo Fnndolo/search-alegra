@@ -1,5 +1,5 @@
-import { Component, OnInit, signal, inject, DestroyRef, ChangeDetectorRef } from '@angular/core';
-import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule } from '@angular/forms';
+import { Component, OnInit, signal, inject, DestroyRef, ChangeDetectorRef, ViewChild } from '@angular/core';
+import { FormBuilder, FormGroup, FormArray, Validators, ReactiveFormsModule, FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import { MessageService } from 'primeng/api';
@@ -7,7 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 
 import { ButtonModule } from 'primeng/button';
-import { DropdownModule } from 'primeng/dropdown';
+import { DropdownModule, Dropdown } from 'primeng/dropdown';
 import { InputTextModule } from 'primeng/inputtext';
 import { InputNumberModule } from 'primeng/inputnumber';
 import { CalendarModule } from 'primeng/calendar';
@@ -15,9 +15,13 @@ import { TextareaModule } from 'primeng/textarea';
 import { ToastModule } from 'primeng/toast';
 import { DividerModule } from 'primeng/divider';
 import { TagModule } from 'primeng/tag';
+import { TooltipModule } from 'primeng/tooltip';
 
 import { PurchaseOrdersService } from '../purchase-orders.service';
 import { InventoryApiService, ProductForWarehouse } from '../../services/inventory-api.service';
+import { BarcodeScannerModalComponent } from '../../shared/barcode-scanner-modal/barcode-scanner-modal.component';
+import { ColorPickerComponent, ColorSelectedEvent } from '../../inventory-dashboard/color-picker/color-picker.component';
+import { Color } from '../../models/inventory.models';
 
 interface StoreOption {
   label: string;
@@ -57,6 +61,7 @@ interface ProductOption {
   imports: [
     CommonModule,
     ReactiveFormsModule,
+    FormsModule,
     RouterLink,
     ButtonModule,
     DropdownModule,
@@ -67,6 +72,9 @@ interface ProductOption {
     ToastModule,
     DividerModule,
     TagModule,
+    TooltipModule,
+    BarcodeScannerModalComponent,
+    ColorPickerComponent,
   ],
   providers: [MessageService],
   templateUrl: './create-order.component.html',
@@ -74,6 +82,13 @@ interface ProductOption {
 export class CreateOrderComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly cdr = inject(ChangeDetectorRef);
+
+  /** Reference to the product `p-dropdown` — needed to reset/close it after a barcode-scanner
+   *  Enter resolves to an exact SKU match (see onProductDropdownEnter). */
+  @ViewChild('productPicker') productPickerRef?: Dropdown;
+  /** Mirrors the dropdown's own filter box text (via its public onFilter event) so a scanner's
+   *  Enter can be matched against it without touching any undocumented internal state. */
+  productFilterText = '';
 
   form!: FormGroup;
   submitting = signal(false);
@@ -89,6 +104,9 @@ export class CreateOrderComponent implements OnInit {
 
   /** Monotonic counter for preventing stale provider/warehouse responses. */
   private requestSeq = 0;
+  /** Store key the initial provider load was last kicked off for — prevents onStoreChange and
+   *  ensureProvidersLoaded from firing a duplicate request for the same store (see the latter). */
+  private providersRequestedForStore: string | null = null;
   /** Per-item-group subscriptions for total-quantity → single-allocation sync (see `onItemQuantityChange`). */
   private readonly itemQuantitySubs = new Map<FormGroup, Subscription>();
   /** Per-allocation-group subscriptions for quantity → unit (IMEI) row sync. */
@@ -96,12 +114,32 @@ export class CreateOrderComponent implements OnInit {
   /** Source product behind each item row — drives the per-allocation variant dropdowns. */
   private readonly itemProducts = new Map<FormGroup, ProductForWarehouse>();
 
+  /** Item row index whose "crear variante nueva" inline form is open (null = none open). */
+  creatingVariantForItem: number | null = null;
+  newVariantColorId: string | null = null;
+  newVariantPreview: Color | null = null;
+  newVariantSku = '';
+  creatingVariant = false;
+
   stores: StoreOption[] = [];
   providers: ProviderOption[] = [];
   warehouses: WarehouseOption[] = [];
   productOptions: ProductOption[] = [];
   /** True once products were loaded for the selected warehouse and the list came back empty. */
   noProductsForWarehouse = false;
+
+  /** Shared camera-scanner modal state — `scannerMode` decides what a successful scan does with the code. */
+  scannerVisible = false;
+  scannerHeader = 'Escanear código';
+  /** Icon + color for the on-camera banner — kept in lockstep with `scannerMode` so it's obvious
+   *  at a glance, without reading text, whether the next scan is a product SKU or a unit IMEI. */
+  scannerBadgeIcon = 'pi pi-barcode';
+  scannerBadgeColor: 'primary' | 'amber' = 'primary';
+  /** True only for the main "scan a product" entry point — chains SKU → IMEI → SKU without
+   *  closing the camera. The per-unit camera button (one specific IMEI field) stays single-shot. */
+  scannerContinuous = false;
+  private scannerMode: 'product' | 'unit' | null = null;
+  private scannerUnitTarget: { itemIndex: number; allocIndex: number; unitIndex: number } | null = null;
 
   get items(): FormArray {
     return this.form.get('items') as FormArray;
@@ -175,6 +213,7 @@ export class CreateOrderComponent implements OnInit {
     this.warehouses = [];
     this.productOptions = [];
     this.noProductsForWarehouse = false;
+    this.providersRequestedForStore = null;
     this.clearItems();
 
     const providerCtrl = this.form.get('providerId');
@@ -196,6 +235,7 @@ export class CreateOrderComponent implements OnInit {
 
     const seq = ++this.requestSeq;
     this.loadWarehouses(storeKey, seq);
+    this.providersRequestedForStore = storeKey;
     this.loadInitialProviders(storeKey, seq);
   }
 
@@ -218,10 +258,19 @@ export class CreateOrderComponent implements OnInit {
     });
   }
 
-  /** Safety net: load providers when the dropdown opens, in case the store-change trigger was missed. */
+  /**
+   * Safety net: load providers when the dropdown opens, in case the store-change trigger was
+   * missed. Guarded by `providersRequestedForStore` (not just `!providers.length`) — without it,
+   * opening the dropdown while onStoreChange's own request is still in flight fired a SECOND
+   * request with a newer `requestSeq`, which made the first request's response get discarded by
+   * the sequence check in `loadInitialProviders` — the list only populated once this second,
+   * redundant round-trip resolved (perceived as "sometimes doesn't load, closing and reopening
+   * fixes it").
+   */
   ensureProvidersLoaded(): void {
     const store = this.form.value.store;
-    if (store && !this.providers.length) {
+    if (store && !this.providers.length && this.providersRequestedForStore !== store) {
+      this.providersRequestedForStore = store;
       this.loadInitialProviders(store, ++this.requestSeq);
     }
   }
@@ -390,13 +439,233 @@ export class CreateOrderComponent implements OnInit {
     });
   }
 
+  /**
+   * A physical barcode reader just types the code into whatever input is focused and then sends
+   * Enter (it's a keyboard-emulating HID device, not a click/arrow-key selection) — so it lands in
+   * the SAME product-search dropdown used for manual typing, instead of a separate field.
+   *
+   * PrimeNG's own Enter handling for `p-dropdown[filter]` only selects a HIGHLIGHTED option (via
+   * arrow keys or mouse hover first) — a scanner never highlights anything, it just types+Enters,
+   * so relying on that native selection is unreliable. Instead: `productFilterText` mirrors the
+   * dropdown's filter box via its PUBLIC `(onFilter)` event (searchProducts), and this handler
+   * matches THAT text against every loaded SKU directly (matchAndAddProductBySku) — completely
+   * independent of whatever PrimeNG's internal highlight/selection state happens to be. If it's
+   * not an exact SKU match (e.g. the user is mid-typing a name to search manually), nothing is
+   * intercepted and the dropdown's native filter/click-to-select behavior is left untouched.
+   */
+  onProductDropdownEnter(event: Event): void {
+    const code = this.productFilterText.trim();
+    if (!code) return;
+
+    const target = this.matchAndAddProductBySku(code);
+    if (!target) return; // no exact SKU match — let the dropdown keep behaving normally.
+
+    event.preventDefault();
+    this.productFilterText = '';
+    this.productPickerRef?.writeValue(null);
+    this.productPickerRef?.resetFilter();
+    this.productPickerRef?.hide();
+
+    if (target.unitIndex !== null) {
+      this.focusImeiField(target.itemIndex, target.allocIndex, target.unitIndex);
+    }
+  }
+
+  /**
+   * Enter on an IMEI/serial field (typed by hand or by a barcode reader): jumps to the next
+   * IMEI/serial input in visual order — the classic "scan gun" data-entry flow, so a whole box of
+   * units can be entered as scan-Enter-scan-Enter without touching the mouse. Loops back to the
+   * product dropdown once the last field is reached, ready to scan the next product's SKU.
+   */
+  onImeiEnter(event: Event): void {
+    event.preventDefault();
+    const current = event.target as HTMLInputElement;
+    const fields = Array.from(document.querySelectorAll<HTMLInputElement>('input[data-imei-key]'));
+    const idx = fields.indexOf(current);
+    const next = idx >= 0 ? fields[idx + 1] : undefined;
+    if (next) {
+      next.focus();
+      next.select();
+    } else {
+      this.productPickerRef?.focus();
+    }
+  }
+
+  /** Focuses the identifier input for a specific (itemIndex, allocIndex, unitIndex) unit, once
+   *  Angular has actually rendered it (it may be a brand-new row from this same scan). */
+  private focusImeiField(itemIndex: number, allocIndex: number, unitIndex: number): void {
+    setTimeout(() => {
+      const el = document.querySelector<HTMLInputElement>(
+        `input[data-imei-key="${itemIndex}-${allocIndex}-${unitIndex}"]`,
+      );
+      el?.focus();
+      el?.select();
+    });
+  }
+
+  /**
+   * Opens the shared camera-scanner modal to look up a product by SKU among the ones already
+   * loaded for this warehouse. Runs in continuous mode: a matched SKU adds/bumps that exact color
+   * variant, and — for products that require one — immediately chains into scanning the IMEI for
+   * the unit it just created, then flips back to expecting the next SKU. The camera never closes
+   * in between, so a whole box of mixed products/colors can be entered as one scan-scan-scan run.
+   */
+  openProductScanner(): void {
+    this.scannerMode = 'product';
+    this.scannerHeader = 'Escaneando SKU del producto';
+    this.scannerBadgeIcon = 'pi pi-barcode';
+    this.scannerBadgeColor = 'primary';
+    this.scannerContinuous = true;
+    this.scannerVisible = true;
+  }
+
+  /** Opens the shared camera-scanner modal to fill ONE specific unit's identifier (IMEI/serial) — single shot, closes after the scan. */
+  openUnitScanner(itemIndex: number, allocIndex: number, unitIndex: number): void {
+    this.scannerMode = 'unit';
+    this.scannerHeader = 'Escaneando IMEI / serial';
+    this.scannerBadgeIcon = 'pi pi-mobile';
+    this.scannerBadgeColor = 'amber';
+    this.scannerContinuous = false;
+    this.scannerUnitTarget = { itemIndex, allocIndex, unitIndex };
+    this.scannerVisible = true;
+  }
+
+  onBarcodeScanned(code: string): void {
+    if (this.scannerMode === 'product') {
+      this.matchAndAddProductBySku(code);
+      return; // keeps scannerMode/target — matchAndAddProductBySku decides the next mode itself.
+    }
+    if (this.scannerMode === 'unit' && this.scannerUnitTarget) {
+      const { itemIndex, allocIndex, unitIndex } = this.scannerUnitTarget;
+      this.getUnits(itemIndex, allocIndex).at(unitIndex)?.get('identifier')?.setValue(code);
+
+      if (this.scannerContinuous) {
+        // Chained from a SKU scan — that unit's IMEI is filled, go back to expecting the next SKU.
+        this.messageService.add({ severity: 'success', summary: 'IMEI cargado', detail: code, life: 2000 });
+        this.scannerMode = 'product';
+        this.scannerHeader = 'Escaneando SKU del producto';
+        this.scannerBadgeIcon = 'pi pi-barcode';
+        this.scannerBadgeColor = 'primary';
+        this.scannerUnitTarget = null;
+        return;
+      }
+    }
+    this.scannerMode = null;
+    this.scannerUnitTarget = null;
+  }
+
+  /**
+   * Matches a scanned code against the SKUs of every variant of every product already listed for
+   * this warehouse (case-insensitive, trimmed). Returns where the matched unit landed (so a caller
+   * can chain into focusing/scanning its IMEI), or null if nothing matched.
+   */
+  private matchAndAddProductBySku(
+    code: string,
+  ): { itemIndex: number; allocIndex: number; unitIndex: number | null } | null {
+    const normalized = code.trim().toLowerCase();
+    let matchedProduct: ProductForWarehouse | undefined;
+    let matchedVariantId: string | undefined;
+    for (const option of this.productOptions) {
+      const v = option.product.variants.find((v) => v.sku.trim().toLowerCase() === normalized);
+      if (v) {
+        matchedProduct = option.product;
+        matchedVariantId = v.id;
+        break;
+      }
+    }
+    if (!matchedProduct || !matchedVariantId) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Sin coincidencia',
+        detail: `Ningún producto de esta bodega tiene el SKU "${code}".`,
+        life: 5000,
+      });
+      return null; // stays in 'product' mode — camera/scanner input is still live for a retry.
+    }
+
+    const variant = matchedProduct.variants.find((v) => v.id === matchedVariantId)!;
+    const target = this.addOrIncrementVariant(matchedProduct, matchedVariantId);
+
+    this.messageService.add({
+      severity: 'success',
+      summary: 'Producto agregado',
+      detail: `${matchedProduct.productName}${variant.color?.name ? ' — ' + variant.color.name : ''}`,
+      life: 2000,
+    });
+
+    if (this.scannerContinuous && target.unitIndex !== null) {
+      // This product requires an identifier — chain straight into scanning the IMEI for the
+      // unit this scan just created, without closing the camera.
+      this.scannerMode = 'unit';
+      this.scannerHeader = 'Escaneando IMEI / serial';
+      this.scannerBadgeIcon = 'pi pi-mobile';
+      this.scannerBadgeColor = 'amber';
+      this.scannerUnitTarget = { itemIndex: target.itemIndex, allocIndex: target.allocIndex, unitIndex: target.unitIndex };
+    }
+    // Fungible product (no identifier): stays in 'product' mode, ready for the next SKU scan.
+    return target;
+  }
+
+  /**
+   * Adds the scanned variant to the order — as a brand-new product row if this is the first time
+   * this product is scanned, as a new color allocation if the product's already in the order but
+   * this color isn't yet, or by bumping an existing allocation's quantity by 1 (auto-adding one
+   * empty unit row) if this exact color was already scanned before. Returns where that unit landed
+   * so the caller can chain into scanning its IMEI.
+   */
+  private addOrIncrementVariant(
+    product: ProductForWarehouse,
+    variantId: string,
+  ): { itemIndex: number; allocIndex: number; unitIndex: number | null } {
+    const hasIdentifier = product.hasIdentifier;
+    const itemIndex = this.items.controls.findIndex(
+      (c) => this.itemProducts.get(c as FormGroup)?.productId === product.productId,
+    );
+
+    if (itemIndex === -1) {
+      this.addProduct({ label: product.productName, value: product.productId, product, skus: '' }, variantId);
+      const newIndex = this.items.length - 1;
+      return {
+        itemIndex: newIndex,
+        allocIndex: 0,
+        unitIndex: hasIdentifier ? this.getUnits(newIndex, 0).length - 1 : null,
+      };
+    }
+
+    const itemGroup = this.items.at(itemIndex) as FormGroup;
+    const allocations = this.variantAllocations(itemIndex);
+    let allocIndex = allocations.controls.findIndex((c) => c.get('productVariantId')?.value === variantId);
+
+    if (allocIndex === -1) {
+      allocations.push(this.buildVariantAllocationGroup(variantId, 1, hasIdentifier));
+      allocIndex = allocations.length - 1;
+    } else {
+      const allocGroup = allocations.at(allocIndex) as FormGroup;
+      const newQty = (allocGroup.get('quantity')?.value ?? 0) + 1;
+      allocGroup.get('quantity')?.setValue(newQty); // triggers syncUnitRows → adds one empty unit row
+    }
+    // Keep the item's total in sync without re-triggering onItemQuantityChange's single-allocation
+    // auto-resize (it would just re-set the same value, but emitEvent:false avoids the extra cycle).
+    itemGroup.get('quantity')?.setValue(this.allocatedQuantity(itemIndex), { emitEvent: false });
+
+    return {
+      itemIndex,
+      allocIndex,
+      unitIndex: hasIdentifier ? this.getUnits(itemIndex, allocIndex).length - 1 : null,
+    };
+  }
+
   searchProducts(event: any): void {
+    // Tracked so a barcode-scanner Enter (onProductDropdownEnter) can read exactly what's
+    // currently typed in the dropdown's own filter box, via PrimeNG's public onFilter event —
+    // no reliance on any internal/undocumented dropdown state.
+    this.productFilterText = event.filter ?? '';
     const warehouseId = this.form.value.warehouseId;
     if (!warehouseId) return;
     this.loadProductsForWarehouse(warehouseId, event.filter);
   }
 
-  addProduct(option: ProductOption | null): void {
+  addProduct(option: ProductOption | null, preferredVariantId?: string): void {
     if (!option) return;
     const product = option.product;
 
@@ -415,11 +684,16 @@ export class CreateOrderComponent implements OnInit {
       return;
     }
 
-    const defaultVariant = product.variants[0] ?? null;
+    const defaultVariant =
+      (preferredVariantId ? product.variants.find((v) => v.id === preferredVariantId) : null) ??
+      product.variants[0] ?? null;
     const firstAllocation = this.buildVariantAllocationGroup(defaultVariant?.id ?? null, 1, product.hasIdentifier);
 
     const itemGroup = this.fb.group({
-      alegraItemId: [product.alegra.alegraItemId, Validators.required],
+      // alegraItemId can be null here — the product was never published in this warehouse yet.
+      // The backend auto-creates the Alegra item (and resolves this id) when the order is submitted.
+      alegraItemId: [product.alegra.alegraItemId],
+      productId: [product.productId, Validators.required],
       name: [product.alegra.alegraName ?? product.productName],
       price: [product.salePrice ?? 0, [Validators.required, Validators.min(1)]],
       quantity: [1, [Validators.required, Validators.min(1)]],
@@ -448,6 +722,11 @@ export class CreateOrderComponent implements OnInit {
   productLabel(index: number): string {
     const group = this.items.at(index) as FormGroup;
     return this.itemProducts.get(group)?.productName ?? group.get('name')?.value ?? '';
+  }
+
+  /** Whether this line already has an Alegra item, or will be auto-created on submit (see resolveItemAlegraIds on the backend). */
+  isPublishedInAlegra(index: number): boolean {
+    return !!this.items.at(index).get('alegraItemId')?.value;
   }
 
   variantAllocations(itemIndex: number): FormArray {
@@ -491,7 +770,7 @@ export class CreateOrderComponent implements OnInit {
       .map((v) => ({
         label: `${v.color?.name ?? 'Sin color'} — ${v.sku}`,
         value: v.id,
-        hexCode: v.color?.hexCode ?? null,
+        hexCode: v.color?.hexCode ?? (v.color as any)?.hex_code ?? null,
       }));
   }
 
@@ -544,6 +823,92 @@ export class CreateOrderComponent implements OnInit {
 
     const hasIdentifier = !!itemGroup.get('hasIdentifier')?.value;
     allocations.push(this.buildVariantAllocationGroup(availableVariant.id, newQty, hasIdentifier));
+  }
+
+  /**
+   * "Sin más colores" (addVariantAllocation) or just wanting a brand-new color/SKU that doesn't
+   * exist yet for this product — opens the inline create-variant form, reusing the same
+   * app-color-picker (dropdown + "Crear nuevo") used everywhere else a color variant is created.
+   */
+  openCreateVariant(itemIndex: number): void {
+    this.creatingVariantForItem = itemIndex;
+    this.newVariantColorId = null;
+    this.newVariantPreview = null;
+    this.newVariantSku = '';
+  }
+
+  cancelCreateVariant(): void {
+    this.creatingVariantForItem = null;
+  }
+
+  onNewVariantColorSelected(event: ColorSelectedEvent): void {
+    this.newVariantColorId = event.colorId;
+    this.newVariantPreview = event.preview;
+  }
+
+  saveNewVariant(itemIndex: number): void {
+    const itemGroup = this.items.at(itemIndex) as FormGroup;
+    const product = this.itemProducts.get(itemGroup);
+    if (!product) return;
+
+    const sku = this.newVariantSku.trim();
+    if (!this.newVariantColorId || !sku) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Datos incompletos',
+        detail: 'Elegí (o creá) un color y escribí el SKU',
+      });
+      return;
+    }
+    if (product.variants.some((v) => v.sku.trim().toLowerCase() === sku.toLowerCase())) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'SKU repetido',
+        detail: `${product.productName} ya tiene una variante con el SKU '${sku}'`,
+      });
+      return;
+    }
+
+    this.creatingVariant = true;
+    this.inventoryApi.createProductVariant(product.productId, { colorId: this.newVariantColorId, sku }).subscribe({
+      next: (created) => {
+        this.creatingVariant = false;
+        // Same object reference `itemProducts` holds — variantOptionsFor sees the new variant
+        // immediately without needing to reload the product.
+        product.variants = [...product.variants, { id: created.id, color: created.color, sku: created.sku }];
+
+        const allocations = this.variantAllocations(itemIndex);
+        const remaining = this.remainingQuantity(itemIndex);
+        const hasIdentifier = !!itemGroup.get('hasIdentifier')?.value;
+        let newQty: number;
+        if (remaining > 0) {
+          newQty = remaining;
+        } else {
+          const controls = allocations.controls as FormGroup[];
+          if (controls.length) {
+            const donor = controls.reduce((biggest, c) =>
+              (c.get('quantity')?.value ?? 0) > (biggest.get('quantity')?.value ?? 0) ? c : biggest,
+            );
+            donor.get('quantity')?.setValue(Math.max(1, (donor.get('quantity')?.value ?? 1) - 1));
+          }
+          newQty = 1;
+        }
+        allocations.push(this.buildVariantAllocationGroup(created.id, newQty, hasIdentifier));
+
+        this.creatingVariantForItem = null;
+        this.messageService.add({
+          severity: 'success',
+          summary: 'Variante creada',
+          detail: `${created.color?.name ?? 'Sin color'} — ${created.sku}`,
+        });
+        this.cdr.markForCheck();
+      },
+      error: (e) => {
+        this.creatingVariant = false;
+        this.messageService.add({ severity: 'error', summary: 'Error', detail: e?.error?.message || 'No se pudo crear la variante' });
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   /** A product needs at least one allocation — to remove it entirely, use the row's trash icon instead. */
@@ -633,8 +998,8 @@ export class CreateOrderComponent implements OnInit {
       const ig = this.items.at(i) as FormGroup;
       const iv = ig.value;
 
-      if (!iv.alegraItemId) {
-        return `El item "${this.productLabel(i)}" todavía no está creado en Alegra para esta bodega.`;
+      if (!iv.productId) {
+        return `El item "${this.productLabel(i)}" no tiene producto asociado.`;
       }
 
       const allocations = this.variantAllocations(i);
@@ -697,6 +1062,7 @@ export class CreateOrderComponent implements OnInit {
 
           return {
             alegraItemId: iv.alegraItemId,
+            productId: iv.productId,
             productVariantId: av.productVariantId,
             name: iv.name,
             price: iv.price,
@@ -795,14 +1161,18 @@ export class CreateOrderComponent implements OnInit {
     // them back into one product row with several variant allocations.
     this.clearItems();
     const orderItems: any[] = order.items ?? [];
-    const grouped = new Map<number, any[]>();
+    const grouped = new Map<string, any[]>();
     for (const item of orderItems) {
       const alegraItemId = item.alegra_item_id ?? item.alegraItemId;
-      if (!grouped.has(alegraItemId)) grouped.set(alegraItemId, []);
-      grouped.get(alegraItemId)!.push(item);
+      const productId = item.product_id ?? item.productId;
+      // Draft rows for products never published yet all share the same alegraItemId sentinel (0) —
+      // group by productId in that case so distinct unpublished products don't collapse into one row.
+      const groupKey = alegraItemId ? `alegra:${alegraItemId}` : `product:${productId}`;
+      if (!grouped.has(groupKey)) grouped.set(groupKey, []);
+      grouped.get(groupKey)!.push(item);
     }
 
-    for (const [alegraItemId, rows] of grouped) {
+    for (const rows of grouped.values()) {
       const first = rows[0];
       const hasIdentifier = !!first.requiresSerial;
       const totalQuantity = rows.reduce((sum, r) => sum + (r.quantity ?? 0), 0);
@@ -824,7 +1194,10 @@ export class CreateOrderComponent implements OnInit {
       });
 
       const itemGroup = this.fb.group({
-        alegraItemId: [alegraItemId, Validators.required],
+        // Falsy/0 while the product was still unpublished when this draft was saved — resolved
+        // server-side on submit, so it's not required here.
+        alegraItemId: [first.alegra_item_id ?? first.alegraItemId ?? null],
+        productId: [first.product_id ?? first.productId ?? null, Validators.required],
         name: [first.name],
         price: [first.price, [Validators.required, Validators.min(1)]],
         quantity: [totalQuantity, [Validators.required, Validators.min(1)]],
@@ -844,6 +1217,7 @@ export class CreateOrderComponent implements OnInit {
   // ─── Actions ────────────────────────────────────────────────────────────────
 
   saveDraft(): void {
+    if (this.savingDraft() || this.submitting() || this.submittingToAlegra()) return;
     if (!this.form.value.store) {
       this.messageService.add({ severity: 'warn', summary: 'Requerido', detail: 'Seleccioná una tienda.' });
       return;
@@ -881,6 +1255,7 @@ export class CreateOrderComponent implements OnInit {
   }
 
   submitDraftToAlegra(): void {
+    if (this.savingDraft() || this.submitting() || this.submittingToAlegra()) return;
     const v = this.form.value;
     this.submitAttempted = true;
     if (!v.store || !v.providerId || !v.alegraWarehouseId || this.items.length === 0) {
@@ -938,6 +1313,7 @@ export class CreateOrderComponent implements OnInit {
   }
 
   submit(): void {
+    if (this.savingDraft() || this.submitting() || this.submittingToAlegra()) return;
     this.submitAttempted = true;
     const v = this.form.value;
 

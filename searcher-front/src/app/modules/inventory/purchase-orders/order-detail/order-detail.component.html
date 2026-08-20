@@ -1,11 +1,11 @@
 <p-toast />
 
 <ng-container *ngIf="!loading(); else spinner">
-  <div class="p-4 max-w-5xl mx-auto">
+  <div class="p-3 md:p-4 max-w-5xl mx-auto">
 
     <!-- Header -->
-    <div class="flex justify-between items-center mb-4">
-      <div class="flex items-center gap-3">
+    <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4">
+      <div class="flex items-center gap-3 flex-wrap">
         <button pButton icon="pi pi-arrow-left" [text]="true" (click)="goBack()"></button>
         <h2 class="text-xl font-semibold">
           <ng-container *ngIf="order?.status === 'draft'; else normalTitle">
@@ -19,7 +19,7 @@
         />
       </div>
 
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <!-- Draft-only actions (admin + facturacion) -->
         <ng-container *ngIf="order?.status === 'draft' && canManageDraft">
           <button
@@ -70,7 +70,7 @@
     </div>
 
     <!-- Order info -->
-    <div class="grid grid-cols-3 gap-4 mb-6 text-sm">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm">
       <div><span class="text-gray-500">Tienda:</span> {{ order?.store }}</div>
       <div><span class="text-gray-500">Proveedor:</span> {{ order?.provider?.name }}</div>
       <div><span class="text-gray-500">Fecha:</span> {{ order?.date }}</div>
@@ -83,14 +83,14 @@
           [value]="order?.inventory_synced ? 'Sincronizado' : 'Pendiente'"
         />
       </div>
-      <div *ngIf="order?.inventory_error" class="col-span-3">
+      <div *ngIf="order?.inventory_error" class="md:col-span-3">
         <span class="text-gray-500">Error de inventario:</span>
         <span class="text-red-500 ml-1 text-xs">{{ order?.inventory_error }}</span>
       </div>
-      <div *ngIf="order?.observations" class="col-span-3">
+      <div *ngIf="order?.observations" class="md:col-span-3">
         <span class="text-gray-500">Observaciones:</span> {{ order?.observations }}
       </div>
-      <div class="col-span-3 text-lg font-semibold">
+      <div class="md:col-span-3 text-lg font-semibold">
         Total: {{ order?.total | currency:'COP':'symbol':'1.0-0' }}
       </div>
     </div>
@@ -100,14 +100,14 @@
     <!-- Items -->
     <h3 class="font-medium mb-3">Items ({{ order?.items?.length || 0 }})</h3>
     <div *ngFor="let item of order?.items" class="border rounded-lg p-4 mb-3">
-      <div class="flex justify-between items-start mb-2">
+      <div class="flex flex-col md:flex-row md:justify-between md:items-start gap-2 mb-2">
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <span class="font-medium">{{ item.name }}</span>
             <ng-container *ngIf="variantInfo(item) as v">
               <span class="inline-flex items-center gap-1.5 bg-gray-100 rounded-full px-2 py-0.5 text-xs">
                 <span class="inline-block w-3 h-3 rounded-full border border-gray-300 shrink-0"
-                      [ngStyle]="{ background: v.color?.hexCode || '#e5e7eb' }"></span>
+                      [ngStyle]="{ background: (v.color?.hexCode || v.color?.hex_code) || '#e5e7eb' }"></span>
                 {{ v.color?.name || 'Sin color' }} — SKU {{ v.sku }}
               </span>
             </ng-container>
@@ -149,19 +149,36 @@
 
     <p-divider />
 
-    <!-- History -->
+    <!-- History: horizontal timeline, most recent event first (leftmost); scroll right for older
+         events. Each marker only shows a compact label — click it to see the full detail. -->
     <h3 class="font-medium mb-3">Historial</h3>
-    <p-timeline [value]="history" styleClass="mb-4">
-      <ng-template pTemplate="content" let-event>
-        <div class="text-sm pb-3">
-          <div class="font-medium">{{ actionLabel(event.action) }}</div>
-          <div class="text-gray-400 text-xs">
-            {{ event.created_at | date:'dd/MM/yy HH:mm' }} — {{ event.created_by || 'sistema' }}
+    <div *ngIf="history.length; else noHistory" class="relative overflow-x-auto pb-2 mb-4">
+      <div class="flex items-center gap-1.5 px-6 mb-1 text-[11px] text-gray-400 select-none w-max">
+        <span class="whitespace-nowrap">Más reciente</span>
+        <span class="inline-block w-10 h-px bg-gray-300"></span>
+        <i class="pi pi-arrow-right" style="font-size: 0.65rem;"></i>
+        <span class="whitespace-nowrap">Más antiguo</span>
+      </div>
+      <div class="relative flex px-6" style="gap: 2.5rem;">
+        <div class="absolute h-0.5 bg-gray-200" style="top: 0.5rem; left: 1.5rem; right: 1.5rem;"></div>
+        <div *ngFor="let event of history" class="relative flex flex-col items-center w-36 shrink-0 z-10">
+          <button
+            type="button"
+            class="w-4 h-4 rounded-full border-2 border-white shadow ring-1 ring-gray-200 cursor-pointer transition-transform hover:scale-125 focus:outline-none"
+            [ngClass]="historyDotClass(event.action)"
+            (click)="openHistoryDetail(event)"
+            [attr.aria-label]="'Ver detalle: ' + actionLabel(event.action)"
+          ></button>
+          <div class="text-center mt-2 px-1">
+            <div class="text-xs font-medium leading-tight">{{ actionLabel(event.action) }}</div>
+            <div class="text-[11px] text-gray-400 mt-0.5">{{ event.created_at | date:'dd/MM/yy HH:mm' }}</div>
           </div>
-          <pre *ngIf="event.detail" class="text-xs bg-gray-50 rounded p-2 mt-1 overflow-x-auto whitespace-pre-wrap">{{ event.detail | json }}</pre>
         </div>
-      </ng-template>
-    </p-timeline>
+      </div>
+    </div>
+    <ng-template #noHistory>
+      <p class="text-sm text-gray-400 mb-4">Sin eventos registrados.</p>
+    </ng-template>
 
   </div>
 </ng-container>
@@ -178,6 +195,7 @@
   [(visible)]="cancelDialogVisible"
   [modal]="true"
   [style]="{ width: '30rem' }"
+  [breakpoints]="{ '640px': '90vw' }"
 >
   <div class="flex flex-col gap-3 pt-2">
     <p class="text-sm text-gray-600">
@@ -206,6 +224,7 @@
   [(visible)]="deleteDraftDialogVisible"
   [modal]="true"
   [style]="{ width: '28rem' }"
+  [breakpoints]="{ '640px': '90vw' }"
 >
   <p class="text-sm text-gray-600 pt-2">
     ¿Eliminás este borrador? Esta acción no se puede deshacer.
@@ -219,5 +238,31 @@
       [loading]="deletingDraft()"
       (click)="doDeleteDraft()"
     ></button>
+  </ng-template>
+</p-dialog>
+
+<!-- History event detail -->
+<p-dialog
+  header="Detalle del evento"
+  [(visible)]="historyDetailVisible"
+  [modal]="true"
+  [style]="{ width: '32rem' }"
+  [breakpoints]="{ '640px': '90vw' }"
+>
+  <div *ngIf="selectedHistoryEvent" class="text-sm">
+    <div class="font-medium mb-1">{{ actionLabel(selectedHistoryEvent.action) }}</div>
+    <div class="text-gray-400 text-xs mb-3">
+      {{ selectedHistoryEvent.created_at | date:'dd/MM/yyyy HH:mm:ss' }} — {{ selectedHistoryEvent.created_by || 'sistema' }}
+    </div>
+    <pre
+      *ngIf="selectedHistoryEvent.detail; else noDetail"
+      class="text-xs bg-gray-50 rounded p-3 overflow-x-auto whitespace-pre-wrap"
+    >{{ selectedHistoryEvent.detail | json }}</pre>
+    <ng-template #noDetail>
+      <p class="text-xs text-gray-400">Sin información adicional para este evento.</p>
+    </ng-template>
+  </div>
+  <ng-template pTemplate="footer">
+    <button pButton label="Cerrar" severity="secondary" (click)="historyDetailVisible = false"></button>
   </ng-template>
 </p-dialog>

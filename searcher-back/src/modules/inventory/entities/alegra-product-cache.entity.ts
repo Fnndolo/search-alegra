@@ -76,6 +76,16 @@ export class AlegraProductCache {
   @JoinColumn({ name: 'warehouse_id' })
   warehouse: Warehouse | null;
 
+  /**
+   * Alegra's own `inventory.warehouses[0].availableQuantity` for this item, ONLY when it's
+   * strictly greater than 0. Alegra uses `-1` to mean "unlimited / not tracked", and `0` is
+   * ambiguous (real zero stock vs. tracking never configured for that item) — storing either as
+   * if it were a real quantity would be actively misleading (e.g. showing "-1 unidades"), so this
+   * column is only ever populated with a genuine positive count; otherwise it stays null.
+   */
+  @Column({ type: 'integer', nullable: true, default: null })
+  available_quantity: number | null;
+
   @Column({ type: 'timestamp' })
   synced_at: Date;
 

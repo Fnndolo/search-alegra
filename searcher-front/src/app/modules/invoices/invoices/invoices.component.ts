@@ -132,10 +132,10 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       this.selectedInvoiceType = savedType;
     }
 
-    this.loadInvoices();
-
-    // Conectar WebSocket y suscribirse a eventos
+    // Sin tienda o tipo seleccionados todavía no hay nada que pedir al backend — evita
+    // el 400 "El parámetro store es requerido" en la primera carga tras el login.
     if (this.selectedStore && this.selectedInvoiceType) {
+      this.loadInvoices();
       this.connectWebSocket();
     }
 

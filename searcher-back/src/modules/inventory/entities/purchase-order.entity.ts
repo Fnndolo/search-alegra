@@ -20,6 +20,8 @@ export interface PurchaseOrderUnit {
 
 export interface PurchaseOrderItem {
   alegraItemId: number;
+  /** Producto local — permite resolver/crear el item en Alegra si `alegraItemId` todavía no existe. */
+  productId?: string | null;
   /** ProductVariant (color+sku) explícita elegida en el form; null/undefined = usar el fallback
    *  documentado en purchase-orders.service.ts (resolveProductVariant). */
   productVariantId?: string | null;

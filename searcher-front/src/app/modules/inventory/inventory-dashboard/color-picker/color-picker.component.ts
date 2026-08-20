@@ -5,147 +5,153 @@ import {
   EventEmitter,
   OnInit,
   OnChanges,
-  OnDestroy,
   SimpleChanges,
   ChangeDetectionStrategy,
   ChangeDetectorRef,
+  ViewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { InputTextModule } from 'primeng/inputtext';
-import { Subject } from 'rxjs';
-import { debounceTime, distinctUntilChanged, switchMap, catchError } from 'rxjs/operators';
-import { of } from 'rxjs';
+import { Popover } from 'primeng/popover';
 import { InventoryApiService } from '../../services/inventory-api.service';
 import { Color } from '../../models/inventory.models';
 
 export interface ColorSelectedEvent {
-  /** Set when the user typed a new name that doesn't match any existing color (find-or-create). */
-  color?: string;
-  /** Set when the user picked an existing color from the suggestions. */
-  colorId?: string;
-  /** Best-effort preview of the resulting color (for showing a swatch immediately). */
-  preview: Color | null;
+  colorId: string;
+  preview: Color;
 }
 
 /**
- * Small color autocomplete: searches the shared color catalog as the user types (debounced),
- * shows a swatch + name per suggestion, and lets the user either pick an existing color
- * (emits `colorId`) or confirm a brand-new name on blur/Enter (emits `color`).
+ * Color picker used everywhere a color variant gets created (nuevo producto, importar producto,
+ * editar variantes de un producto existente, ordenes de compra): a dropdown listing the full color
+ * catalog (swatch + name) plus a "Crear nuevo" footer action. Every selection resolves to a real
+ * colorId, so callers never need to handle a free-text/no-id case.
+ *
+ * The color list is a p-popover (appendTo="body") anchored to the trigger. Needed because this
+ * component lives inside p-dialog modals (nuevo producto, importar producto) whose own
+ * overflow/scroll container clipped/pushed around a locally-positioned panel.
+ *
+ * "Crear nuevo" is an absolutely-positioned overlay INSIDE that same popover (not a separate
+ * p-dialog) — nesting it there means it stacks above the color list "for free" via normal DOM
+ * layering instead of fighting two independent PrimeNG overlays (popover vs dialog) over z-index.
  */
 @Component({
   selector: 'app-color-picker',
   standalone: true,
-  imports: [CommonModule, FormsModule, InputTextModule],
+  imports: [CommonModule, FormsModule, Popover],
   templateUrl: './color-picker.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class ColorPickerComponent implements OnInit, OnChanges, OnDestroy {
+export class ColorPickerComponent implements OnInit, OnChanges {
   @Input() initialColor: Color | null = null;
-  @Input() placeholder = 'Buscar o escribir color...';
+  @Input() placeholder = 'Elegir color...';
   @Output() colorSelected = new EventEmitter<ColorSelectedEvent>();
 
-  query = '';
-  suggestions: Color[] = [];
-  showSuggestions = false;
-  searching = false;
+  @ViewChild('op') private popover!: Popover;
 
-  private selectedColor: Color | null = null;
-  private readonly querySubject = new Subject<string>();
+  filterText = '';
+  allColors: Color[] = [];
+  loadingColors = false;
+  private colorsLoaded = false;
 
-  constructor(private readonly api: InventoryApiService, private readonly cdr: ChangeDetectorRef) {}
+  selectedColor: Color | null = null;
+
+  creatingNew = false;
+  newColorName = '';
+  newColorHex = '#cccccc';
+  creating = false;
+  createError = '';
+
+  constructor(
+    private readonly api: InventoryApiService,
+    private readonly cdr: ChangeDetectorRef,
+  ) {}
 
   ngOnInit(): void {
-    this.applyInitialColor();
-
-    this.querySubject
-      .pipe(
-        debounceTime(250),
-        distinctUntilChanged(),
-        switchMap((term) => {
-          if (!term.trim()) return of<Color[]>([]);
-          this.searching = true;
-          return this.api.searchColors(term).pipe(catchError(() => of<Color[]>([])));
-        }),
-      )
-      .subscribe((results) => {
-        this.searching = false;
-        this.suggestions = results;
-        this.cdr.markForCheck();
-      });
+    this.selectedColor = this.initialColor;
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['initialColor'] && !changes['initialColor'].firstChange) {
-      this.applyInitialColor();
+      this.selectedColor = this.initialColor;
     }
   }
 
-  ngOnDestroy(): void {
-    this.querySubject.complete();
+  get filteredColors(): Color[] {
+    const term = this.filterText.trim().toLowerCase();
+    if (!term) return this.allColors;
+    return this.allColors.filter((c) => c.name.toLowerCase().includes(term));
   }
 
-  private applyInitialColor(): void {
-    this.selectedColor = this.initialColor;
-    this.query = this.initialColor?.name ?? '';
+  toggle(event: Event): void {
+    this.filterText = '';
+    // The palette is small and rarely changes mid-session, fetch once, reuse on every reopen.
+    if (!this.colorsLoaded) this.loadColors();
+    this.popover.toggle(event);
   }
 
-  onQueryChange(value: string): void {
-    this.query = value;
-    this.showSuggestions = true;
-    // Any manual edit invalidates the previously selected color until confirmed again.
-    if (this.selectedColor && this.selectedColor.name !== value) {
-      this.selectedColor = null;
-    }
-    this.querySubject.next(value);
+  private loadColors(): void {
+    this.loadingColors = true;
+    this.api.searchColors().subscribe({
+      next: (colors) => {
+        this.allColors = colors;
+        this.colorsLoaded = true;
+        this.loadingColors = false;
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.loadingColors = false;
+        this.cdr.markForCheck();
+      },
+    });
   }
 
-  onFocus(): void {
-    if (this.query.trim()) {
-      this.showSuggestions = true;
-      this.querySubject.next(this.query);
-    }
-  }
-
-  /** mousedown (not click) fires before the input's blur, so the selection isn't lost. */
-  selectColor(color: Color, event: MouseEvent): void {
-    event.preventDefault();
+  selectColor(color: Color): void {
     this.selectedColor = color;
-    this.query = color.name;
-    this.showSuggestions = false;
+    this.popover.hide();
     this.colorSelected.emit({ colorId: color.id, preview: color });
   }
 
-  onEnter(): void {
-    this.confirm();
-    this.showSuggestions = false;
+  /** Opens the create-color dialog. The color-list popover behind it is left open on purpose. */
+  startCreate(): void {
+    this.newColorName = this.filterText.trim();
+    this.newColorHex = '#cccccc';
+    this.createError = '';
+    this.creatingNew = true;
   }
 
-  onBlur(): void {
-    // Delay so a suggestion mousedown can run first.
-    setTimeout(() => {
-      this.showSuggestions = false;
-      this.confirm();
-      this.cdr.markForCheck();
-    }, 150);
+  cancelCreate(): void {
+    this.creatingNew = false;
   }
 
-  private confirm(): void {
-    const trimmed = this.query.trim();
-    if (!trimmed) {
-      this.selectedColor = null;
+  saveNewColor(): void {
+    const name = this.newColorName.trim();
+    if (!name) {
+      this.createError = 'El nombre es obligatorio';
       return;
     }
-    if (this.selectedColor && this.selectedColor.name === trimmed) {
-      // Already emitted via selectColor — nothing new to confirm.
-      return;
-    }
-    // New free-typed name — find-or-create on the backend.
-    this.selectedColor = null;
-    this.colorSelected.emit({ color: trimmed, preview: null });
+    this.creating = true;
+    this.createError = '';
+    this.api.createColor({ name, hexCode: this.newColorHex }).subscribe({
+      next: (color) => {
+        this.creating = false;
+        this.allColors = [...this.allColors, color];
+        this.creatingNew = false;
+        this.selectColor(color);
+      },
+      error: () => {
+        this.creating = false;
+        this.createError = 'No se pudo crear el color';
+        this.cdr.markForCheck();
+      },
+    });
   }
 
-  swatchStyle(color: Color): Record<string, string> {
-    return { background: color.hexCode || '#e5e7eb' };
+  swatchStyle(color: Color | null): Record<string, string> {
+    // `color` sometimes arrives as a raw nested entity (e.g. `initialColor` set from an existing
+    // variant's `color`) instead of the /colors endpoint's mapped DTO. The entity's column is
+    // `hex_code`, not `hexCode`.
+    const hex = color?.hexCode ?? color?.hex_code;
+    return { background: hex || '#e5e7eb' };
   }
 }

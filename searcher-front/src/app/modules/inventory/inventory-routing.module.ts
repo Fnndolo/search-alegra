@@ -37,7 +37,6 @@ const routes: Routes = [
           ),
       },
       { path: 'pendientes', component: InventoryDashboardComponent },
-      { path: 'configuracion', component: InventoryDashboardComponent },
       { path: 'catalogos', component: InventoryDashboardComponent },
       {
         path: 'purchase-orders',

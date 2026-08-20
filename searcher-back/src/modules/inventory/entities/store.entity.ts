@@ -24,9 +24,6 @@ export class Store {
   @Column({ type: 'boolean', default: true })
   active: boolean;
 
-  @Column({ type: 'varchar', length: 10, nullable: true, default: null })
-  alegra_sync_override: 'auto' | 'manual' | null;
-
   @OneToMany(() => Warehouse, (w) => w.store)
   warehouses: Warehouse[];
 

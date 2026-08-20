@@ -23,6 +23,10 @@ export class ColorPanelComponent implements OnInit {
   editForm: { name: string; hexCode: string } = { name: '', hexCode: '#cccccc' };
   saving = false;
 
+  creating = false;
+  showCreateForm = false;
+  createForm: { name: string; hexCode: string } = { name: '', hexCode: '#cccccc' };
+
   constructor(private readonly api: InventoryApiService, private readonly messageService: MessageService, private readonly cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
@@ -40,6 +44,37 @@ export class ColorPanelComponent implements OnInit {
       error: () => {
         this.loading = false;
         this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cargar la paleta de colores' });
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  openCreateForm(): void {
+    this.createForm = { name: '', hexCode: '#cccccc' };
+    this.showCreateForm = true;
+  }
+
+  cancelCreate(): void {
+    this.showCreateForm = false;
+  }
+
+  createColor(): void {
+    if (!this.createForm.name.trim()) {
+      this.messageService.add({ severity: 'warn', summary: 'Requerido', detail: 'El nombre es obligatorio' });
+      return;
+    }
+    this.creating = true;
+    this.api.createColor({ name: this.createForm.name.trim(), hexCode: this.createForm.hexCode }).subscribe({
+      next: (created) => {
+        this.creating = false;
+        this.showCreateForm = false;
+        this.colors = [...this.colors, created].sort((a, b) => a.name.localeCompare(b.name));
+        this.messageService.add({ severity: 'success', summary: 'Color creado' });
+        this.cdr.markForCheck();
+      },
+      error: (e) => {
+        this.creating = false;
+        this.messageService.add({ severity: 'error', summary: 'Error', detail: e?.error?.message || 'No se pudo crear el color' });
         this.cdr.markForCheck();
       },
     });

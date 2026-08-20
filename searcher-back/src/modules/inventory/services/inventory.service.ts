@@ -20,6 +20,8 @@ import { Contact } from '../entities/contact.entity';
 import { ProductWarehouseAlegraItem } from '../entities/product-warehouse-alegra-item.entity';
 import { InventoryAlegraFactory } from '../alegra/inventory-alegra.factory';
 import { ColorService } from './color.service';
+import { InventoryAlegraSync } from './inventory-alegra-sync.service';
+import { ProductAlegraPublishService } from './product-alegra-publish.service';
 
 /** Shape used across variant-list responses in this module: `{ id, name, hexCode }`. */
 export interface ColorSummary {
@@ -164,6 +166,10 @@ export class InventoryService {
     private readonly alegraFactory: InventoryAlegraFactory,
 
     private readonly colorService: ColorService,
+
+    private readonly alegraSync: InventoryAlegraSync,
+
+    private readonly alegraPublishService: ProductAlegraPublishService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -371,9 +377,11 @@ export class InventoryService {
     const take = filters?.limit ?? 50;
     const skip = (filters?.page ?? 0) * take;
 
+    // leftJoin (not innerJoin): products never published in this warehouse must still appear —
+    // the purchase-order form needs to offer them so the order can auto-create the Alegra item.
     const qb = this.productRepo
       .createQueryBuilder('product')
-      .innerJoin(
+      .leftJoin(
         ProductWarehouseAlegraItem,
         'pwai',
         'pwai.product_id = product.id AND pwai.warehouse_id = :warehouseId',
@@ -711,6 +719,9 @@ export class InventoryService {
       entity.category = category;
     }
 
+    const priceChanged = dto.salePrice !== undefined && dto.salePrice !== entity.sale_price;
+    const nameChanged = dto.name !== undefined && dto.name !== entity.name;
+
     Object.assign(entity, {
       ...(dto.name !== undefined && { name: dto.name }),
       ...(dto.active !== undefined && { active: dto.active }),
@@ -718,7 +729,79 @@ export class InventoryService {
       ...(dto.negativeSell !== undefined && { negative_sell: dto.negativeSell }),
       ...(dto.salePrice !== undefined && { sale_price: dto.salePrice }),
     });
-    return this.productRepo.save(entity);
+    const saved = await this.productRepo.save(entity);
+
+    // Best-effort pushes: never throw (a temporary Alegra outage must not block saving the local
+    // change), but surface what failed instead of hiding it — the caller was explicit that a
+    // silent local-only save was misleading the user into thinking Alegra was already up to date.
+    const warnings: string[] = [];
+    if (priceChanged) {
+      const warning = await this.pushPriceToAlegra(saved);
+      if (warning) warnings.push(warning);
+    }
+    if (nameChanged) {
+      const warning = await this.pushNameToAlegra(saved);
+      if (warning) warnings.push(warning);
+    }
+
+    return warnings.length ? Object.assign(saved, { alegraSyncWarning: warnings.join(' — ') }) : saved;
+  }
+
+  /**
+   * Best-effort: pushes the product's sale price to every Alegra item already published for it
+   * (one per warehouse). Never throws — a temporary Alegra outage must not block saving the local
+   * price, it just means that warehouse's item is stale until the next successful push/retry.
+   * Returns a human-readable warning listing which warehouses failed, or null if all succeeded.
+   */
+  private async pushPriceToAlegra(product: Product): Promise<string | null> {
+    const mappings = await this.pwaiRepo.find({ where: { product_id: product.id } });
+    const failedStores: string[] = [];
+    for (const mapping of mappings) {
+      try {
+        await this.alegraSync.updateItemInAlegra(mapping.store_key, mapping.alegra_item_id, {
+          price: product.sale_price ?? 0,
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `[updateProduct] Failed to push price to Alegra item ${mapping.alegra_item_id} (product ${product.id}): ${err?.message}`,
+        );
+        failedStores.push(mapping.store_key);
+      }
+    }
+    return failedStores.length
+      ? `El precio se guardó localmente pero no se pudo actualizar en Alegra para: ${failedStores.join(', ')}`
+      : null;
+  }
+
+  /**
+   * Best-effort: pushes the product's new name to every Alegra item already published for it.
+   * Each warehouse's Alegra item name carries that warehouse's prefix (see
+   * `ProductAlegraPublishService.buildAlegraItemName`, e.g. "(P) iPhone 17 Pro" for a non-main
+   * warehouse) — recomputed per mapping's warehouse, not just the raw product name, so a rename
+   * doesn't wipe out the prefix that distinguishes the same product across warehouses in Alegra.
+   * Returns a human-readable warning listing which warehouses failed, or null if all succeeded.
+   */
+  private async pushNameToAlegra(product: Product): Promise<string | null> {
+    const mappings = await this.pwaiRepo.find({ where: { product_id: product.id } });
+    const failedStores: string[] = [];
+    for (const mapping of mappings) {
+      try {
+        const warehouse = await this.warehouseRepo.findOne({ where: { id: mapping.warehouse_id } });
+        if (!warehouse) continue;
+        const name = this.alegraPublishService.buildAlegraItemName(warehouse, product);
+        await this.alegraSync.updateItemInAlegra(mapping.store_key, mapping.alegra_item_id, { name });
+        mapping.alegra_name = name;
+        await this.pwaiRepo.save(mapping);
+      } catch (err: any) {
+        this.logger.warn(
+          `[updateProduct] Failed to push name to Alegra item ${mapping.alegra_item_id} (product ${product.id}): ${err?.message}`,
+        );
+        failedStores.push(mapping.store_key);
+      }
+    }
+    return failedStores.length
+      ? `El nombre se guardó localmente pero no se pudo actualizar en Alegra para: ${failedStores.join(', ')}`
+      : null;
   }
 
   /**

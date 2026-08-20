@@ -37,6 +37,7 @@ export class BodegaPanelComponent implements OnInit, OnChanges {
     nombre: '',
     esPrincipal: false,
     activo: true,
+    prefix: '',
     alegraWarehouseId: null as number | null,
     alegraStoreKey: ''
   };
@@ -105,7 +106,7 @@ export class BodegaPanelComponent implements OnInit, OnChanges {
   openCreateBodega(sede: Sede) {
     this.selectedSedeId = sede.id;
     this.editingBodega = null;
-    this.bodegaForm = { nombre: '', esPrincipal: false, activo: true, alegraWarehouseId: null, alegraStoreKey: '' };
+    this.bodegaForm = { nombre: '', esPrincipal: false, activo: true, prefix: '', alegraWarehouseId: null, alegraStoreKey: '' };
     this.showBodegaDialog = true;
   }
 
@@ -116,6 +117,7 @@ export class BodegaPanelComponent implements OnInit, OnChanges {
       nombre: bodega.nombre,
       esPrincipal: bodega.es_principal,
       activo: bodega.activo,
+      prefix: bodega.prefix ?? '',
       alegraWarehouseId: bodega.alegra_warehouse_id,
       alegraStoreKey: bodega.alegra_store_key ?? ''
     };
@@ -134,6 +136,7 @@ export class BodegaPanelComponent implements OnInit, OnChanges {
           nombre: this.bodegaForm.nombre.trim(),
           esPrincipal: this.bodegaForm.esPrincipal,
           activo: this.bodegaForm.activo,
+          prefix: this.bodegaForm.esPrincipal ? null : (this.bodegaForm.prefix.trim() || null),
           alegraWarehouseId: this.bodegaForm.alegraWarehouseId ?? undefined,
           alegraStoreKey: this.bodegaForm.alegraStoreKey.trim() || undefined
         })
@@ -141,6 +144,7 @@ export class BodegaPanelComponent implements OnInit, OnChanges {
           sedeId: this.selectedSedeId!,
           nombre: this.bodegaForm.nombre.trim(),
           esPrincipal: this.bodegaForm.esPrincipal,
+          prefix: this.bodegaForm.esPrincipal ? undefined : (this.bodegaForm.prefix.trim() || undefined),
           alegraWarehouseId: this.bodegaForm.alegraWarehouseId ?? undefined,
           alegraStoreKey: this.bodegaForm.alegraStoreKey.trim() || undefined
         });

@@ -15,8 +15,10 @@ import { ToastModule } from 'primeng/toast';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
 import { MessageService } from 'primeng/api';
 
+import { TooltipModule } from 'primeng/tooltip';
 import { InventoryApiService, AlegraStatusRow } from '../../services/inventory-api.service';
 import { ColorPickerComponent, ColorSelectedEvent } from '../color-picker/color-picker.component';
+import { BarcodeScannerModalComponent } from '../../shared/barcode-scanner-modal/barcode-scanner-modal.component';
 import { Categoria, Color, ProductoDetalle, VarianteDetalle } from '../../models/inventory.models';
 
 interface ProductEditForm {
@@ -31,7 +33,6 @@ interface ProductEditForm {
 interface VariantEditForm {
   sku: string;
   active: boolean;
-  color?: string;
   colorId?: string;
   preview: Color | null;
 }
@@ -43,7 +44,7 @@ interface VariantEditForm {
     CommonModule, FormsModule, ButtonModule, CardModule, TagModule,
     DialogModule, InputTextModule, InputNumberModule, DropdownModule,
     ToggleSwitchModule, TableModule, ToastModule, ProgressSpinnerModule,
-    ColorPickerComponent,
+    TooltipModule, ColorPickerComponent, BarcodeScannerModalComponent,
   ],
   providers: [MessageService],
   templateUrl: './product-detail.component.html',
@@ -74,6 +75,7 @@ export class ProductDetailComponent implements OnInit {
   savingVariant = false;
   editingVariant: VarianteDetalle | null = null;
   variantForm: VariantEditForm = { sku: '', active: true, preview: null };
+  scannerVisible = false;
 
   // ── Delete variant ────────────────────────────────────
   showDeleteVariant = false;
@@ -191,7 +193,10 @@ export class ProductDetailComponent implements OnInit {
   }
 
   swatchStyle(color: Color | null): Record<string, string> {
-    return { background: color?.hexCode || '#d1d5db' };
+    // `color` comes nested off a ProductVariant here (raw entity, column `hex_code`), not from
+    // the /colors endpoint's mapped DTO (`hexCode`) — tolerate both shapes.
+    const hex = color?.hexCode ?? (color as any)?.hex_code;
+    return { background: hex || '#d1d5db' };
   }
 
   // ── Edit product ──────────────────────────────────────
@@ -223,10 +228,16 @@ export class ProductDetailComponent implements OnInit {
       negativeSell: this.productForm.negativeSell,
       salePrice: this.productForm.salePrice,
     }).subscribe({
-      next: () => {
+      next: (updated) => {
         this.savingProduct = false;
         this.showEditProduct = false;
         this.messageService.add({ severity: 'success', summary: 'Producto actualizado' });
+        if (updated.alegraSyncWarning) {
+          this.messageService.add({
+            severity: 'warn', summary: 'No se reflejó en Alegra',
+            detail: updated.alegraSyncWarning, life: 8000,
+          });
+        }
         this.loadDetail();
       },
       error: (e) => {
@@ -283,9 +294,17 @@ export class ProductDetailComponent implements OnInit {
   }
 
   onVariantColorSelected(event: ColorSelectedEvent): void {
-    this.variantForm.color = event.color;
     this.variantForm.colorId = event.colorId;
     this.variantForm.preview = event.preview;
+  }
+
+  openSkuScanner(): void {
+    this.scannerVisible = true;
+  }
+
+  onSkuScanned(code: string): void {
+    this.variantForm.sku = code;
+    this.cdr.markForCheck();
   }
 
   saveVariant(): void {
@@ -294,23 +313,22 @@ export class ProductDetailComponent implements OnInit {
       this.messageService.add({ severity: 'warn', summary: 'Requerido', detail: 'El SKU es obligatorio' });
       return;
     }
-    if (!this.editingVariant && !this.variantForm.colorId && !this.variantForm.color?.trim()) {
+    if (!this.editingVariant && !this.variantForm.colorId) {
       this.messageService.add({ severity: 'warn', summary: 'Requerido', detail: 'El color es obligatorio' });
       return;
     }
 
     this.savingVariant = true;
-    const body: { sku?: string; active?: boolean; color?: string; colorId?: string } = {
+    const body: { sku?: string; active?: boolean; colorId?: string } = {
       sku: this.variantForm.sku.trim(),
       active: this.variantForm.active,
     };
     if (this.variantForm.colorId) body.colorId = this.variantForm.colorId;
-    else if (this.variantForm.color) body.color = this.variantForm.color;
 
     const isEdit = !!this.editingVariant;
     const request$ = this.editingVariant
       ? this.api.updateProductVariant(this.editingVariant.id, body)
-      : this.api.createProductVariant(this.producto.id, body as { sku: string; color?: string; colorId?: string });
+      : this.api.createProductVariant(this.producto.id, body as { sku: string; colorId?: string });
 
     request$.subscribe({
       next: () => {

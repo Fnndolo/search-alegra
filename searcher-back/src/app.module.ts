@@ -39,6 +39,7 @@ import { ProductWarehouseAlegraItem } from './modules/inventory/entities/product
 import { AlegraProductCache } from './modules/inventory/entities/alegra-product-cache.entity';
 import { ProductImportDraft } from './modules/inventory/entities/product-import-draft.entity';
 import { Color } from './modules/inventory/entities/color.entity';
+import { SaleSyncIssue } from './modules/inventory/entities/sale-sync-issue.entity';
 const { getDatabaseConfig } = require('../config');
 
 
@@ -74,6 +75,7 @@ const { getDatabaseConfig } = require('../config');
         AlegraProductCache,
         ProductImportDraft,
         Color,
+        SaleSyncIssue,
       ],
       synchronize: process.env.NODE_ENV !== 'production',
       logging: false,

@@ -1,4 +1,4 @@
-import { Component, Input, Output, EventEmitter } from '@angular/core';
+import { Component, Input, Output, EventEmitter, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
@@ -9,14 +9,17 @@ import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 import { IconFieldModule } from 'primeng/iconfield';
 import { InputIconModule } from 'primeng/inputicon';
+import { TooltipModule } from 'primeng/tooltip';
 import { InventoryApiService } from '../../services/inventory-api.service';
+import { BarcodeScannerModalComponent } from '../../shared/barcode-scanner-modal/barcode-scanner-modal.component';
 
 @Component({
   selector: 'app-imei-search-modal',
   standalone: true,
   imports: [
     CommonModule, FormsModule, ButtonModule, DialogModule,
-    InputTextModule, TagModule, ToastModule, IconFieldModule, InputIconModule
+    InputTextModule, TagModule, ToastModule, IconFieldModule, InputIconModule,
+    TooltipModule, BarcodeScannerModalComponent
   ],
   providers: [MessageService],
   templateUrl: './imei-search-modal.component.html'
@@ -29,8 +32,13 @@ export class ImeiSearchModalComponent {
   loading = false;
   result: any = null;
   notFound = false;
+  scannerVisible = false;
 
-  constructor(private api: InventoryApiService, private messageService: MessageService) {}
+  constructor(
+    private api: InventoryApiService,
+    private messageService: MessageService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   close() {
     this.visible = false;
@@ -49,6 +57,7 @@ export class ImeiSearchModalComponent {
       next: (res) => {
         this.loading = false;
         this.result = res;
+        this.cdr.detectChanges();
       },
       error: (e) => {
         this.loading = false;
@@ -57,6 +66,7 @@ export class ImeiSearchModalComponent {
         } else {
           this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo buscar el identificador' });
         }
+        this.cdr.detectChanges();
       }
     });
   }
@@ -68,5 +78,10 @@ export class ImeiSearchModalComponent {
 
   onKeyDown(event: KeyboardEvent) {
     if (event.key === 'Enter') this.search();
+  }
+
+  onBarcodeScanned(code: string): void {
+    this.identifier = code;
+    this.search();
   }
 }

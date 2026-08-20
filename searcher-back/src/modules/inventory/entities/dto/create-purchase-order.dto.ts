@@ -17,9 +17,21 @@ export class CreatePurchaseOrderUnitDto {
 }
 
 export class CreatePurchaseOrderItemDto {
+  /**
+   * Producto local. Si todavía no tiene item de Alegra para la bodega de la orden, se crea
+   * automáticamente antes de facturar (ver PurchaseOrdersService.resolveItemAlegraIds).
+   */
+  @IsString()
+  productId: string;
+
+  /**
+   * Opcional: si se omite (producto nunca publicado en esta bodega), se resuelve del lado del
+   * servidor a partir de `productId` + `warehouseId` de la orden.
+   */
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  alegraItemId: number;
+  alegraItemId?: number;
 
   /**
    * ProductVariant (color+sku) explícita para este ítem. Si se omite, se usa la primera
@@ -97,9 +109,13 @@ export class CreatePurchaseOrderDto {
 }
 
 export class UpdatePurchaseOrderItemDto {
+  @IsString()
+  productId: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
-  alegraItemId: number;
+  alegraItemId?: number;
 
   @IsOptional()
   @IsString()

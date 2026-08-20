@@ -13,6 +13,7 @@ import { Warehouse } from '../entities/warehouse.entity';
 import { Store } from '../entities/store.entity';
 import { MovementType } from '../entities/enums';
 import { InventoryAlegraFactory } from '../alegra/inventory-alegra.factory';
+import { ProductAlegraPublishService } from './product-alegra-publish.service';
 import {
   CreatePurchaseOrderDto,
   UpdatePurchaseOrderDto,
@@ -27,10 +28,13 @@ import {
 interface SyncInventoryDto {
   store: string;
   items: Array<{
-    alegraItemId: number;
+    // Resolved to a real id by resolveItemAlegraIds before syncInventory ever sees it.
+    alegraItemId?: number | null;
     productVariantId?: string | null;
     requiresSerial: boolean;
     quantity: number;
+    // Purchase price for this line — persisted onto each unit's Variant.cost_price.
+    price: number;
     units: Array<{ identifier?: string | null }>;
   }>;
 }
@@ -67,6 +71,8 @@ export class PurchaseOrdersService {
     private readonly dataSource: DataSource,
 
     private readonly alegraFactory: InventoryAlegraFactory,
+
+    private readonly alegraPublishService: ProductAlegraPublishService,
   ) {}
 
   // ── create ───────────────────────────────────────────────────────────────────
@@ -77,13 +83,17 @@ export class PurchaseOrdersService {
    * NOT valid is the exact same (alegraItemId, productVariantId) pair repeated — that's just a
    * duplicate line that should have been one line with a higher quantity instead.
    */
-  private assertNoDuplicateVariantLines(items: Array<{ alegraItemId: number; productVariantId?: string | null }>): void {
+  private assertNoDuplicateVariantLines(
+    items: Array<{ productId?: string | null; alegraItemId?: number | null; productVariantId?: string | null }>,
+  ): void {
+    // Keyed by productId (not alegraItemId): a never-published product has no alegraItemId yet,
+    // so two different unpublished products would otherwise collide on the same "undefined" key.
     const seen = new Set<string>();
     for (const item of items) {
-      const key = `${item.alegraItemId}::${item.productVariantId ?? ''}`;
+      const key = `${item.productId ?? item.alegraItemId}::${item.productVariantId ?? ''}`;
       if (seen.has(key)) {
         throw new BadRequestException(
-          `El item ${item.alegraItemId} está repetido con la misma variante — juntá las cantidades en una sola línea.`,
+          `El item ${item.productId ?? item.alegraItemId} está repetido con la misma variante — juntá las cantidades en una sola línea.`,
         );
       }
       seen.add(key);
@@ -95,6 +105,14 @@ export class PurchaseOrdersService {
     if (dto.draft) {
       return this.createDraft(dto, userId);
     }
+
+    // 0. Ensure every line has an Alegra item — auto-create it (and persist the mapping) for any
+    // product never published in this warehouse before. Runs BEFORE the bill so a failure here
+    // aborts the whole order: nothing gets created in Alegra's bills nor locally.
+    if (!dto.warehouseId) {
+      throw new BadRequestException('warehouseId es requerido para crear la orden de compra');
+    }
+    await this.resolveItemAlegraIds(dto.items, dto.warehouseId);
 
     // 1. Call Alegra (outside transaction — external side effect)
     const client = this.alegraFactory.getClient(dto.store);
@@ -121,9 +139,10 @@ export class PurchaseOrdersService {
       warehouseEntity = await this.warehouseRepo.findOne({ where: { id: dto.warehouseId } });
     }
 
-    // 3. Build items JSONB
+    // 3. Build items JSONB (alegraItemId already resolved by resolveItemAlegraIds above)
     const orderItems: PurchaseOrderItem[] = dto.items.map((item) => ({
-      alegraItemId: item.alegraItemId,
+      alegraItemId: item.alegraItemId!,
+      productId: item.productId ?? null,
       productVariantId: item.productVariantId ?? null,
       name: item.name,
       price: item.price,
@@ -187,21 +206,33 @@ export class PurchaseOrdersService {
         );
 
         if (duplicates.length > 0) {
+          // Do NOT mark inventory_synced=true here — those identifiers were never actually
+          // created, so the order needs to keep showing up as pending (getSyncLogs/getSyncCount)
+          // and retryInventory must stay able to run again once the conflict is resolved.
           savedOrder.status = 'serial_duplicated';
+          savedOrder.inventory_synced = false;
+          savedOrder.inventory_error = this.describeSerialDuplicates(duplicates);
           savedOrder = await qr.manager.save(PurchaseOrder, savedOrder);
           await this.saveHistory(savedOrder.id, 'serial_conflict', { duplicates }, userId, qr.manager);
+          await this.saveHistory(
+            savedOrder.id,
+            'inventory_synced',
+            { success: false, error: savedOrder.inventory_error },
+            userId,
+            qr.manager,
+          );
+        } else {
+          savedOrder.inventory_synced = true;
+          savedOrder.inventory_error = null;
+          savedOrder = await qr.manager.save(PurchaseOrder, savedOrder);
+          await this.saveHistory(
+            savedOrder.id,
+            'inventory_synced',
+            { success: true, units_processed: dto.items.reduce((acc, i) => acc + i.quantity, 0) },
+            userId,
+            qr.manager,
+          );
         }
-
-        savedOrder.inventory_synced = true;
-        savedOrder.inventory_error = null;
-        savedOrder = await qr.manager.save(PurchaseOrder, savedOrder);
-        await this.saveHistory(
-          savedOrder.id,
-          'inventory_synced',
-          { success: true, units_processed: dto.items.reduce((acc, i) => acc + i.quantity, 0) },
-          userId,
-          qr.manager,
-        );
       } catch (syncErr: any) {
         this.logger.error(
           `[PurchaseOrders] Inventory sync failed for order ${savedOrder.id}: ${syncErr.message}`,
@@ -251,8 +282,11 @@ export class PurchaseOrdersService {
     dto: CreatePurchaseOrderDto,
     userId: string | null,
   ): Promise<PurchaseOrder> {
+    // alegraItemId may still be unresolved here (0 = pending) — a draft never touches Alegra;
+    // resolveItemAlegraIds runs later, in submitDraft, right before the bill is created.
     const orderItems: PurchaseOrderItem[] = dto.items.map((item) => ({
-      alegraItemId: item.alegraItemId,
+      alegraItemId: item.alegraItemId ?? 0,
+      productId: item.productId ?? null,
       productVariantId: item.productVariantId ?? null,
       name: item.name,
       price: item.price,
@@ -305,6 +339,14 @@ export class PurchaseOrdersService {
     if (order.status !== 'draft') {
       throw new BadRequestException(`Order ${id} is not a draft (current status: ${order.status})`);
     }
+
+    // 0. Same auto-create-in-Alegra guarantee as `create()` — a draft can be built with products
+    // that were never published, since drafts never touch Alegra until this point.
+    const draftWarehouseId = (order.warehouse_local as Warehouse | null)?.id;
+    if (!draftWarehouseId) {
+      throw new BadRequestException('El borrador no tiene bodega asignada — no se puede facturar en Alegra');
+    }
+    await this.resolveItemAlegraIds(order.items, draftWarehouseId);
 
     // 1. POST to Alegra (outside transaction)
     const client = this.alegraFactory.getClient(order.store);
@@ -373,23 +415,32 @@ export class PurchaseOrdersService {
 
         if (duplicates.length > 0) {
           savedOrder.status = 'serial_duplicated';
+          savedOrder.inventory_synced = false;
+          savedOrder.inventory_error = this.describeSerialDuplicates(duplicates);
           savedOrder = await qr.manager.save(PurchaseOrder, savedOrder);
           await this.saveHistory(savedOrder.id, 'serial_conflict', { duplicates }, userId, qr.manager);
+          await this.saveHistory(
+            savedOrder.id,
+            'inventory_synced',
+            { success: false, error: savedOrder.inventory_error },
+            userId,
+            qr.manager,
+          );
+        } else {
+          savedOrder.inventory_synced = true;
+          savedOrder.inventory_error = null;
+          savedOrder = await qr.manager.save(PurchaseOrder, savedOrder);
+          await this.saveHistory(
+            savedOrder.id,
+            'inventory_synced',
+            {
+              success: true,
+              units_processed: savedOrder.items.reduce((acc, i) => acc + i.quantity, 0),
+            },
+            userId,
+            qr.manager,
+          );
         }
-
-        savedOrder.inventory_synced = true;
-        savedOrder.inventory_error = null;
-        savedOrder = await qr.manager.save(PurchaseOrder, savedOrder);
-        await this.saveHistory(
-          savedOrder.id,
-          'inventory_synced',
-          {
-            success: true,
-            units_processed: savedOrder.items.reduce((acc, i) => acc + i.quantity, 0),
-          },
-          userId,
-          qr.manager,
-        );
       } catch (syncErr: any) {
         this.logger.error(
           `[PurchaseOrders] submitDraft: Inventory sync failed for order ${savedOrder.id}: ${syncErr.message}`,
@@ -462,6 +513,46 @@ export class PurchaseOrdersService {
 
   // ── Private helpers ──────────────────────────────────────────────────────────
 
+  /**
+   * Resolves each line's `alegraItemId`, creating the item in Alegra (and persisting the
+   * product-warehouse mapping) the first time a product is ordered for this warehouse.
+   * `createItemInAlegra` is itself idempotent (returns the existing mapping if one is already
+   * there), so it's safe to call unconditionally for every line with a `productId`. That mapping
+   * is saved permanently as soon as Alegra confirms it — even if the order fails afterwards
+   * (bill creation or the local DB transaction), the item stays created for the next attempt.
+   */
+  private async resolveItemAlegraIds(
+    items: Array<{ productId?: string | null; alegraItemId?: number | null }>,
+    warehouseId: string,
+  ): Promise<void> {
+    // Cached by productId: several lines (e.g. different colors) commonly share the same product,
+    // so this also owns the "one Alegra item per product" invariant instead of relying on
+    // createItemInAlegra's internal idempotency check running once per line.
+    const resolved = new Map<string, number>();
+    for (const item of items) {
+      if (!item.productId) continue; // legacy caller already resolved alegraItemId directly
+      let alegraItemId = resolved.get(item.productId);
+      if (alegraItemId === undefined) {
+        const result = await this.alegraPublishService.createItemInAlegra(item.productId, warehouseId);
+        if (!result.alegraItemId) {
+          throw new BadRequestException(
+            `Alegra no devolvió un id de item válido para el producto ${item.productId}`,
+          );
+        }
+        alegraItemId = result.alegraItemId;
+        resolved.set(item.productId, alegraItemId);
+      }
+      item.alegraItemId = alegraItemId;
+    }
+  }
+
+  private describeSerialDuplicates(duplicates: string[]): string {
+    return (
+      `${duplicates.length} identificador(es) duplicado(s) detectado(s): ${duplicates.join(', ')} — ` +
+      `ya pertenecen a otra unidad activa. Desactivá/corregí esa unidad y usá "Reintentar inventario" para resolver.`
+    );
+  }
+
   private buildAlegraPayload(dto: CreatePurchaseOrderDto): Record<string, any> {
     return {
       date: dto.date,
@@ -470,17 +561,7 @@ export class PurchaseOrdersService {
       warehouse: { id: dto.alegraWarehouseId },
       ...(dto.observations ? { observations: dto.observations } : {}),
       purchases: {
-        items: dto.items.map((item) => ({
-          id: item.alegraItemId,
-          price: item.price,
-          quantity: item.quantity,
-          discount: 0,
-          tax: null,
-          observations: this.buildItemObservations(
-            item.quantity,
-            item.units.map((u) => u.identifier ?? '').filter(Boolean),
-          ),
-        })),
+        items: this.buildAlegraPurchaseItems(dto.items),
       },
     };
   }
@@ -494,19 +575,38 @@ export class PurchaseOrdersService {
       warehouse: { id: order.warehouse.id },
       ...(order.observations ? { observations: order.observations } : {}),
       purchases: {
-        items: order.items.map((item) => ({
-          id: item.alegraItemId,
-          price: item.price,
-          quantity: item.quantity,
-          discount: 0,
-          tax: null,
-          observations: this.buildItemObservations(
-            item.quantity,
-            item.units.map((u) => u.identifier ?? '').filter(Boolean),
-          ),
-        })),
+        items: this.buildAlegraPurchaseItems(order.items),
       },
     };
+  }
+
+  /**
+   * Alegra doesn't know about our local color/variant split — a product is a single item there
+   * regardless of how many local lines (one per color) reference it. Two local lines sharing the
+   * same `alegraItemId` (e.g. 2 Negro + 2 Azul of the same product) must collapse into ONE Alegra
+   * purchase line with the combined quantity and every IMEI listed together, or Alegra shows the
+   * same item duplicated on the bill.
+   */
+  private buildAlegraPurchaseItems(
+    items: Array<{ alegraItemId?: number | null; price: number; quantity: number; units: Array<{ identifier?: string | null }> }>,
+  ): Array<Record<string, any>> {
+    const grouped = new Map<number, { price: number; quantity: number; identifiers: string[] }>();
+    for (const item of items) {
+      const alegraItemId = item.alegraItemId!;
+      const entry = grouped.get(alegraItemId) ?? { price: item.price, quantity: 0, identifiers: [] };
+      entry.quantity += item.quantity;
+      entry.identifiers.push(...item.units.map((u) => u.identifier ?? '').filter(Boolean));
+      grouped.set(alegraItemId, entry);
+    }
+
+    return Array.from(grouped.entries()).map(([alegraItemId, entry]) => ({
+      id: alegraItemId,
+      price: entry.price,
+      quantity: entry.quantity,
+      discount: 0,
+      tax: [],
+      observations: this.buildItemObservations(entry.quantity, entry.identifiers),
+    }));
   }
 
   private buildItemObservations(quantity: number, identifiers: string[]): string {
@@ -586,6 +686,12 @@ export class PurchaseOrdersService {
     const alegraInvoiceId = order.alegra_id ? String(order.alegra_id) : null;
 
     for (const item of dto.items) {
+      if (!item.alegraItemId) {
+        this.logger.warn(
+          `[PurchaseOrders] Item without a resolved alegraItemId reached syncInventory (store=${dto.store}) — skipping inventory`,
+        );
+        continue;
+      }
       const product = await this.resolveProductForAlegraItem(dto.store, item.alegraItemId, manager);
 
       if (!product) {
@@ -641,7 +747,16 @@ export class PurchaseOrdersService {
         if (identifier) {
           const existing = await variantRepo.findOne({ where: { identifier } });
           if (existing) {
-            if (retryMode) continue; // already processed on a prior run
+            if (retryMode) {
+              // Only skip if THIS order's own bill already created that exact variant on a prior
+              // run — otherwise it's still a genuine, unresolved conflict with some other unit and
+              // must be reported again (previously this branch silently swallowed it forever,
+              // leaving the order permanently stuck in serial_duplicated with no way to recover).
+              const ownMovement = await movementRepo.findOne({
+                where: { reference, variant: { id: existing.id } },
+              });
+              if (ownMovement) continue;
+            }
             duplicates.push(identifier);
             continue;
           }
@@ -651,6 +766,7 @@ export class PurchaseOrdersService {
           product_variant: { id: productVariant.id } as ProductVariant,
           warehouse: warehouseEntity ? ({ id: warehouseEntity.id } as Warehouse) : null,
           identifier,
+          cost_price: item.price,
           entry_date: new Date(),
           active: true,
         });
@@ -804,7 +920,8 @@ export class PurchaseOrdersService {
       if (dto.items !== undefined) {
         this.assertNoDuplicateVariantLines(dto.items);
         const newItems = dto.items.map((item) => ({
-          alegraItemId: item.alegraItemId,
+          alegraItemId: item.alegraItemId ?? 0,
+          productId: item.productId ?? null,
           productVariantId: item.productVariantId ?? null,
           name: item.name,
           price: item.price,
@@ -826,6 +943,9 @@ export class PurchaseOrdersService {
     }
 
     // Non-draft: guard against calling Alegra when alegra_id is missing
+    const client = this.alegraFactory.getClient(order.store);
+    let alegraCompensationPayload: Record<string, any> | null = null;
+
     if (order.alegra_id === null) {
       this.logger.warn(
         `[PurchaseOrders] update() called on order ${id} with null alegra_id and status '${order.status}' — skipping Alegra call`,
@@ -841,22 +961,22 @@ export class PurchaseOrdersService {
       if (dto.providerId) alegraUpdate.provider = { id: dto.providerId };
       if (dto.items) {
         alegraUpdate.purchases = {
-          items: dto.items.map((item) => ({
-            id: item.alegraItemId,
-            price: item.price,
-            quantity: item.quantity,
-            discount: 0,
-            tax: null,
-            observations: this.buildItemObservations(
-              item.quantity,
-              item.units.map((u) => u.identifier ?? '').filter(Boolean),
-            ),
-          })),
+          items: this.buildAlegraPurchaseItems(dto.items),
         };
       }
 
       if (Object.keys(alegraUpdate).length > 0) {
-        const client = this.alegraFactory.getClient(order.store);
+        // Snapshot the pre-update state (built from the order as it still is, untouched) so the
+        // DB-transaction catch block below can PUT it back to Alegra if the local write fails —
+        // same compensation idea as create()'s DELETE, adapted to an edit that can't just be undone.
+        alegraCompensationPayload = {
+          date: order.date,
+          dueDate: order.due_date,
+          ...(order.observations ? { observations: order.observations } : {}),
+          provider: { id: order.provider.id },
+          purchases: { items: this.buildAlegraPurchaseItems(order.items) },
+        };
+
         try {
           await this.alegraFactory.requestWithRetry(() =>
             client.put(`/bills/${order.alegra_id}`, alegraUpdate),
@@ -875,36 +995,81 @@ export class PurchaseOrdersService {
 
     const changedFields = Object.keys(dto);
 
-    if (dto.date) order.date = dto.date;
-    if (dto.dueDate) order.due_date = dto.dueDate;
-    if (dto.observations !== undefined) order.observations = dto.observations;
-    if (dto.providerId) {
-      order.provider = {
-        id: dto.providerId,
-        name: dto.providerName ?? order.provider.name,
-        identification: dto.providerIdentification ?? order.provider.identification,
-      };
-    }
+    // DB transaction: local field updates + inventory sync + history. If anything here throws
+    // after Alegra already accepted the PUT above, roll back the DB and revert the Alegra bill
+    // to its pre-update snapshot instead of leaving the two systems out of sync.
+    const qr = this.dataSource.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
 
-    if (dto.items) {
-      // Only sync inventory if the order has been previously synced
-      if (order.inventory_synced) {
-        await this.syncInventoryOnEdit(order, dto.items, userId);
+    let saved!: PurchaseOrder;
+    try {
+      if (dto.date) order.date = dto.date;
+      if (dto.dueDate) order.due_date = dto.dueDate;
+      if (dto.observations !== undefined) order.observations = dto.observations;
+      if (dto.providerId) {
+        order.provider = {
+          id: dto.providerId,
+          name: dto.providerName ?? order.provider.name,
+          identification: dto.providerIdentification ?? order.provider.identification,
+        };
       }
-      order.items = dto.items.map((item) => ({
-        alegraItemId: item.alegraItemId,
-        productVariantId: item.productVariantId ?? null,
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        subtotal: item.price * item.quantity,
-        requiresSerial: item.requiresSerial,
-        units: item.units.map((u) => ({ identifier: u.identifier ?? null })),
-      }));
+
+      if (dto.items) {
+        // This path edits an order already invoiced in Alegra — every line must already reference
+        // a real, resolved item (unlike a draft, there's no auto-create step here).
+        for (const item of dto.items) {
+          if (!item.alegraItemId) {
+            throw new BadRequestException(
+              `El item del producto ${item.productId} no tiene un alegraItemId resuelto — no se puede editar una orden ya facturada con este item.`,
+            );
+          }
+        }
+        // Only sync inventory if the order has been previously synced
+        if (order.inventory_synced) {
+          await this.syncInventoryOnEdit(order, dto.items, userId, qr.manager);
+        }
+        order.items = dto.items.map((item) => ({
+          alegraItemId: item.alegraItemId!,
+          productId: item.productId ?? null,
+          productVariantId: item.productVariantId ?? null,
+          name: item.name,
+          price: item.price,
+          quantity: item.quantity,
+          subtotal: item.price * item.quantity,
+          requiresSerial: item.requiresSerial,
+          units: item.units.map((u) => ({ identifier: u.identifier ?? null })),
+        }));
+      }
+
+      saved = await qr.manager.save(PurchaseOrder, order);
+      await this.saveHistory(saved.id, 'edited', { changed_fields: changedFields }, userId, qr.manager);
+
+      await qr.commitTransaction();
+    } catch (err: any) {
+      await qr.rollbackTransaction();
+
+      if (alegraCompensationPayload) {
+        try {
+          await this.alegraFactory.requestWithRetry(() =>
+            client.put(`/bills/${order.alegra_id}`, alegraCompensationPayload),
+          );
+          this.logger.warn(
+            `[PurchaseOrders] update: Compensation: reverted Alegra bill ${order.alegra_id} to its pre-update state after DB transaction failure`,
+          );
+        } catch (compensateErr: any) {
+          this.logger.error(
+            `[PurchaseOrders] update: CRITICAL: failed to revert Alegra bill ${order.alegra_id} after DB failure — MANUAL CLEANUP REQUIRED: ${compensateErr.message}`,
+            compensateErr.stack,
+          );
+        }
+      }
+
+      throw err;
+    } finally {
+      await qr.release();
     }
 
-    const saved = await this.orderRepo.save(order);
-    await this.saveHistory(saved.id, 'edited', { changed_fields: changedFields }, userId);
     return saved;
   }
 
@@ -914,10 +1079,16 @@ export class PurchaseOrdersService {
     order: PurchaseOrder,
     newItems: UpdatePurchaseOrderItemDto[],
     userId: string | null,
+    manager?: EntityManager,
   ): Promise<void> {
-    const storeEntity = await this.storeRepo.findOne({ where: { store_key: order.store } });
+    const variantRepo = manager ? manager.getRepository(Variant) : this.variantRepo;
+    const movementRepo = manager ? manager.getRepository(InventoryMovement) : this.movementRepo;
+    const storeRepo = manager ? manager.getRepository(Store) : this.storeRepo;
+    const warehouseRepo = manager ? manager.getRepository(Warehouse) : this.warehouseRepo;
+
+    const storeEntity = await storeRepo.findOne({ where: { store_key: order.store } });
     const warehouseEntity = order.warehouse_local
-      ? await this.warehouseRepo.findOne({ where: { id: (order.warehouse_local as Warehouse).id } })
+      ? await warehouseRepo.findOne({ where: { id: (order.warehouse_local as Warehouse).id } })
       : null;
 
     for (const newItem of newItems) {
@@ -929,10 +1100,10 @@ export class PurchaseOrdersService {
         (i) => i.alegraItemId === newItem.alegraItemId && (i.productVariantId ?? null) === (newItem.productVariantId ?? null),
       );
 
-      const product = await this.resolveProductForAlegraItem(order.store, newItem.alegraItemId);
+      const product = await this.resolveProductForAlegraItem(order.store, newItem.alegraItemId!, manager);
       if (!product) continue;
 
-      const productVariant = await this.resolveProductVariant(product.id, newItem.productVariantId);
+      const productVariant = await this.resolveProductVariant(product.id, newItem.productVariantId, manager);
       if (!productVariant) continue;
 
       const reference = `EDIT-${order.id}`;
@@ -942,15 +1113,16 @@ export class PurchaseOrdersService {
       if (!oldItem) {
         if (newItem.requiresSerial) {
           for (const unit of newItem.units) {
-            const variant = this.variantRepo.create({
+            const variant = variantRepo.create({
               product_variant: { id: productVariant.id } as ProductVariant,
               warehouse: warehouseEntity ? ({ id: warehouseEntity.id } as Warehouse) : null,
               identifier: unit.identifier?.trim() || null,
+              cost_price: newItem.price,
               entry_date: new Date(),
               active: true,
             });
-            const savedVariant = await this.variantRepo.save(variant);
-            const movement = this.movementRepo.create({
+            const savedVariant = await variantRepo.save(variant);
+            const movement = movementRepo.create({
               variant: { id: savedVariant.id } as Variant,
               product_variant: undefined,
               movement_type: MovementType.ENTRY,
@@ -964,10 +1136,10 @@ export class PurchaseOrdersService {
               store: storeEntity ? ({ id: storeEntity.id } as Store) : undefined,
               alegra_invoice_id: alegraInvoiceId,
             });
-            await this.movementRepo.save(movement);
+            await movementRepo.save(movement);
           }
         } else {
-          const movement = this.movementRepo.create({
+          const movement = movementRepo.create({
             variant: undefined,
             product_variant: { id: productVariant.id } as ProductVariant,
             movement_type: MovementType.ENTRY,
@@ -981,7 +1153,7 @@ export class PurchaseOrdersService {
             store: storeEntity ? ({ id: storeEntity.id } as Store) : undefined,
             alegra_invoice_id: alegraInvoiceId,
           });
-          await this.movementRepo.save(movement);
+          await movementRepo.save(movement);
         }
         continue;
       }
@@ -994,15 +1166,16 @@ export class PurchaseOrdersService {
         if (qtyDiff > 0) {
           const addedUnits = newItem.units.slice(oldItem.quantity);
           for (const unit of addedUnits) {
-            const variant = this.variantRepo.create({
+            const variant = variantRepo.create({
               product_variant: { id: productVariant.id } as ProductVariant,
               warehouse: warehouseEntity ? ({ id: warehouseEntity.id } as Warehouse) : null,
               identifier: unit.identifier?.trim() || null,
+              cost_price: newItem.price,
               entry_date: new Date(),
               active: true,
             });
-            const savedVariant = await this.variantRepo.save(variant);
-            const movement = this.movementRepo.create({
+            const savedVariant = await variantRepo.save(variant);
+            const movement = movementRepo.create({
               variant: { id: savedVariant.id } as Variant,
               product_variant: undefined,
               movement_type: MovementType.ENTRY,
@@ -1016,18 +1189,18 @@ export class PurchaseOrdersService {
               store: storeEntity ? ({ id: storeEntity.id } as Store) : undefined,
               alegra_invoice_id: alegraInvoiceId,
             });
-            await this.movementRepo.save(movement);
+            await movementRepo.save(movement);
           }
         } else {
           const removedUnits = oldItem.units.slice(newItem.quantity);
           for (const unit of removedUnits) {
             if (!unit.identifier) continue;
-            const variant = await this.variantRepo.findOne({ where: { identifier: unit.identifier } });
+            const variant = await variantRepo.findOne({ where: { identifier: unit.identifier } });
             if (!variant) continue;
             variant.active = false;
             variant.exit_date = new Date();
-            await this.variantRepo.save(variant);
-            const movement = this.movementRepo.create({
+            await variantRepo.save(variant);
+            const movement = movementRepo.create({
               variant: { id: variant.id } as Variant,
               product_variant: undefined,
               movement_type: MovementType.EXIT,
@@ -1041,11 +1214,11 @@ export class PurchaseOrdersService {
               store: storeEntity ? ({ id: storeEntity.id } as Store) : undefined,
               alegra_invoice_id: alegraInvoiceId,
             });
-            await this.movementRepo.save(movement);
+            await movementRepo.save(movement);
           }
         }
       } else {
-        const movement = this.movementRepo.create({
+        const movement = movementRepo.create({
           variant: undefined,
           product_variant: { id: productVariant.id } as ProductVariant,
           movement_type: qtyDiff > 0 ? MovementType.ENTRY : MovementType.EXIT,
@@ -1060,7 +1233,7 @@ export class PurchaseOrdersService {
           store: storeEntity ? ({ id: storeEntity.id } as Store) : undefined,
           alegra_invoice_id: alegraInvoiceId,
         });
-        await this.movementRepo.save(movement);
+        await movementRepo.save(movement);
       }
     }
   }
@@ -1256,6 +1429,7 @@ export class PurchaseOrdersService {
         productVariantId: item.productVariantId ?? null,
         requiresSerial: item.requiresSerial,
         quantity: item.quantity,
+        price: item.price,
         units: item.units.map((u) => ({ identifier: u.identifier ?? undefined })),
       })),
     };
@@ -1272,11 +1446,28 @@ export class PurchaseOrdersService {
       );
 
       if (duplicates.length > 0) {
+        // Still conflicting — stay in serial_duplicated with inventory_synced=false so this
+        // stays retryable (previously this forced inventory_synced=true regardless, which made
+        // the order permanently unrecoverable through this same endpoint).
         order.status = 'serial_duplicated';
-        await this.orderRepo.save(order);
-        await this.saveHistory(order.id, 'serial_conflict', { duplicates, source: 'retry' }, userId);
+        order.inventory_synced = false;
+        order.inventory_error = this.describeSerialDuplicates(duplicates);
+        const saved = await this.orderRepo.save(order);
+        await this.saveHistory(saved.id, 'serial_conflict', { duplicates, source: 'retry' }, userId);
+        await this.saveHistory(
+          saved.id,
+          'retry_inventory',
+          { success: false, error: saved.inventory_error },
+          userId,
+        );
+        return saved;
       }
 
+      // Conflict resolved (the identifier that was blocking this order is now free) — promote the
+      // order back out of serial_duplicated so it isn't stuck showing a stale conflict status.
+      if (order.status === 'serial_duplicated') {
+        order.status = 'active';
+      }
       order.inventory_synced = true;
       order.inventory_error = null;
       const saved = await this.orderRepo.save(order);

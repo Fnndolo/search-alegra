@@ -1,0 +1,74 @@
+<p-toast />
+
+<div class="p-3 md:p-5 max-w-5xl mx-auto">
+  <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-2 mb-4">
+    <div>
+      <h2 class="text-xl font-semibold">Logs de Sincronización de Ventas</h2>
+      <p class="text-sm text-gray-500 mt-1">
+        Líneas de factura que Alegra reportó como vendidas pero no se pudieron descontar automáticamente del inventario.
+      </p>
+    </div>
+    <button
+      pButton
+      label="Actualizar"
+      icon="pi pi-refresh"
+      severity="secondary"
+      styleClass="w-full md:w-auto"
+      (click)="load()"
+      [disabled]="loading()"
+    ></button>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading()" class="flex justify-center py-16">
+    <p-progressSpinner />
+  </div>
+
+  <!-- Empty state -->
+  <div
+    *ngIf="!loading() && issues.length === 0"
+    class="text-center py-16 text-gray-400"
+  >
+    <i class="pi pi-check-circle text-4xl text-green-400 mb-3 block"></i>
+    <div class="font-medium">Todo sincronizado</div>
+    <div class="text-sm">No hay ventas con inventario pendiente.</div>
+  </div>
+
+  <!-- Issue entries -->
+  <div
+    *ngFor="let issue of issues"
+    class="border border-red-100 rounded-lg p-4 mb-4 bg-red-50"
+  >
+    <div class="flex flex-col md:flex-row md:justify-between md:items-start gap-2 mb-3">
+      <div>
+        <div class="font-medium text-sm">
+          Factura #{{ issue.alegra_invoice_id }}
+          <span class="text-gray-400 ml-2">{{ issue.store_key }}</span>
+        </div>
+        <div class="text-xs text-gray-500">
+          Item Alegra {{ issue.alegra_item_id }} &nbsp;·&nbsp;
+          Esperado {{ issue.quantity_expected }} / Resuelto {{ issue.quantity_resolved }}
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 items-center">
+        <p-tag severity="danger" [value]="reasonLabel(issue)"></p-tag>
+        <button
+          pButton
+          label="Reintentar"
+          icon="pi pi-refresh"
+          size="small"
+          [loading]="retrying() === issue.id"
+          [disabled]="retrying() !== null"
+          (click)="retry(issue)"
+        ></button>
+      </div>
+    </div>
+
+    <div class="bg-white rounded p-3 text-xs font-mono">
+      <div class="text-red-600 font-semibold mb-1">
+        Detectado — {{ createdAt(issue) }}
+      </div>
+      <div class="text-gray-700">{{ issue.details ?? 'Sin detalle disponible' }}</div>
+    </div>
+  </div>
+</div>

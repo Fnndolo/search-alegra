@@ -8,14 +8,15 @@ import { InputNumberModule } from 'primeng/inputnumber';
 import { DropdownModule } from 'primeng/dropdown';
 import { TextareaModule } from 'primeng/textarea';
 import { ToggleSwitchModule } from 'primeng/toggleswitch';
+import { TooltipModule } from 'primeng/tooltip';
 import { MessageService } from 'primeng/api';
 import { ToastModule } from 'primeng/toast';
 import { InventoryApiService } from '../../services/inventory-api.service';
 import { ColorPickerComponent, ColorSelectedEvent } from '../color-picker/color-picker.component';
 import { Color } from '../../models/inventory.models';
+import { BarcodeScannerModalComponent } from '../../shared/barcode-scanner-modal/barcode-scanner-modal.component';
 
 interface VariantRow {
-  color?: string;
   colorId?: string;
   preview: Color | null;
   sku: string;
@@ -27,7 +28,7 @@ interface VariantRow {
   imports: [
     CommonModule, FormsModule, ButtonModule, DialogModule,
     InputTextModule, InputNumberModule, DropdownModule, TextareaModule,
-    ToggleSwitchModule, ToastModule, ColorPickerComponent
+    ToggleSwitchModule, ToastModule, TooltipModule, ColorPickerComponent, BarcodeScannerModalComponent
   ],
   providers: [MessageService],
   templateUrl: './product-form-modal.component.html'
@@ -50,6 +51,9 @@ export class ProductFormModalComponent implements OnInit {
 
   categorias: any[] = [];
   loading = false;
+
+  scannerVisible = false;
+  private scannerTargetIndex: number | null = null;
 
   constructor(
     private api: InventoryApiService,
@@ -84,13 +88,32 @@ export class ProductFormModalComponent implements OnInit {
     this.variants.push({ preview: null, sku: '' });
   }
 
+  /**
+   * A fungible product (no identifier) with 2+ colors can't be disambiguated when Alegra reports
+   * a sale — there's no per-unit signal (like an IMEI/serial) to say which color sold. Warn, don't
+   * block: some fungible products genuinely don't care which color moved.
+   */
+  get showFungibleMultiVariantWarning(): boolean {
+    return !this.form.hasIdentifier && this.variants.length > 1;
+  }
+
   removeVariantRow(index: number) {
     if (this.variants.length <= 1) return;
     this.variants.splice(index, 1);
   }
 
+  openSkuScanner(index: number): void {
+    this.scannerTargetIndex = index;
+    this.scannerVisible = true;
+  }
+
+  onSkuScanned(code: string): void {
+    if (this.scannerTargetIndex === null) return;
+    this.variants[this.scannerTargetIndex].sku = code;
+    this.scannerTargetIndex = null;
+  }
+
   onVariantColorSelected(index: number, event: ColorSelectedEvent) {
-    this.variants[index].color = event.color;
     this.variants[index].colorId = event.colorId;
     this.variants[index].preview = event.preview;
   }
@@ -101,7 +124,7 @@ export class ProductFormModalComponent implements OnInit {
     }
     const skus = new Set<string>();
     for (const variant of this.variants) {
-      if ((!variant.color?.trim() && !variant.colorId) || !variant.sku?.trim()) {
+      if (!variant.colorId || !variant.sku?.trim()) {
         return 'Todas las variantes deben tener color y SKU';
       }
       const sku = variant.sku.trim();
@@ -151,7 +174,7 @@ export class ProductFormModalComponent implements OnInit {
       negativeSell: this.form.negativeSell,
       salePrice: this.form.salePrice ?? undefined,
       variants: this.variants.map(v => ({
-        ...(v.colorId ? { colorId: v.colorId } : { color: v.color!.trim() }),
+        colorId: v.colorId!,
         sku: v.sku.trim(),
       })),
     }).subscribe({

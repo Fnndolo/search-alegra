@@ -155,12 +155,19 @@ export class AlegraImportService {
 
       // One Alegra item = one warehouse (prefix-per-warehouse convention) — only the first
       // entry of `inventory.warehouses[]` is meaningful here.
-      const rawWarehouses: Array<{ id?: number | string }> = item?.inventory?.warehouses ?? [];
+      const rawWarehouses: Array<{ id?: number | string; availableQuantity?: number | string }> =
+        item?.inventory?.warehouses ?? [];
       const alegraWarehouseId = rawWarehouses.length ? Number(rawWarehouses[0]?.id) : null;
       const matchedWarehouse =
         alegraWarehouseId != null && !Number.isNaN(alegraWarehouseId)
           ? warehouseByAlegraId.get(alegraWarehouseId)
           : undefined;
+
+      // Alegra uses -1 for "unlimited/not tracked" and 0 is ambiguous (real zero vs. tracking
+      // never configured) — only a genuine positive count is worth caching, anything else would
+      // misrepresent stock that doesn't really exist.
+      const rawQuantity = rawWarehouses.length ? Number(rawWarehouses[0]?.availableQuantity) : NaN;
+      const availableQuantity = Number.isFinite(rawQuantity) && rawQuantity > 0 ? rawQuantity : null;
 
       const price = item?.price?.[0]?.price ?? item?.price ?? null;
       const values = {
@@ -174,6 +181,7 @@ export class AlegraImportService {
         alegra_warehouse_id:
           alegraWarehouseId != null && !Number.isNaN(alegraWarehouseId) ? alegraWarehouseId : null,
         warehouse_id: matchedWarehouse?.id ?? null,
+        available_quantity: availableQuantity,
         synced_at: new Date(),
       };
 
@@ -245,6 +253,7 @@ export class AlegraImportService {
     storeKey?: string;
     status?: string;
     search?: string;
+    hasStock?: boolean;
     page?: number;
     limit?: number;
   }): Promise<{ data: ProductImportDraft[]; total: number }> {
@@ -254,7 +263,8 @@ export class AlegraImportService {
     const qb = this.draftRepo
       .createQueryBuilder('draft')
       .leftJoinAndSelect('draft.category', 'category')
-      .leftJoinAndSelect('draft.alegra_product_cache', 'cache');
+      .leftJoinAndSelect('draft.alegra_product_cache', 'cache')
+      .leftJoinAndSelect('draft.product', 'product');
 
     if (filters?.storeKey) qb.andWhere('draft.store_key = :storeKey', { storeKey: filters.storeKey.toLowerCase() });
     if (filters?.status) qb.andWhere('draft.status = :status', { status: filters.status });
@@ -263,6 +273,9 @@ export class AlegraImportService {
         term: `%${filters.search}%`,
       });
     }
+    // "Cantidad en existencia" filter — only cached items where Alegra reported a genuine
+    // positive stock (available_quantity is only ever populated when > 0, see syncAlegraProductCache).
+    if (filters?.hasStock) qb.andWhere('cache.available_quantity IS NOT NULL');
 
     qb.orderBy('draft.created_at', 'DESC').take(take).skip(skip);
 

@@ -75,6 +75,13 @@ export class WebhooksController {
               await this.invoicesService.deleteSingleInvoice(store, entityId);
               this.logger.log(`🗑️ Invoice ${entityId} deleted for ${store}`);
               this.websocketsGateway.emitInvoiceDeleted(store, entityId);
+
+              // Reverse inventory — isolated, never breaks webhook flow
+              try {
+                await this.inventoryStockService.reverseInvoiceSale(store, entityId);
+              } catch (err) {
+                this.logger.warn(`[Webhooks] inventory reversal error: ${err?.message}`);
+              }
             } else {
               // Para new y edit, obtener datos y emitir
               const invoiceData = await this.invoicesService.updateSingleInvoice(store, entityId);

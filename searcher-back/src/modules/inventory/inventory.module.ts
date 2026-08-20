@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { SharedModule } from '../../shared/shared.module';
+import { InvoicesModule } from '../../invoices/invoices.module';
 
 import { Category } from './entities/category.entity';
 import { Store } from './entities/store.entity';
@@ -18,6 +19,7 @@ import { Contact } from './entities/contact.entity';
 import { ProductWarehouseAlegraItem } from './entities/product-warehouse-alegra-item.entity';
 import { AlegraProductCache } from './entities/alegra-product-cache.entity';
 import { ProductImportDraft } from './entities/product-import-draft.entity';
+import { SaleSyncIssue } from './entities/sale-sync-issue.entity';
 import { ProductAlegraPublishService } from './services/product-alegra-publish.service';
 import { AlegraImportService } from './services/alegra-import.service';
 import { StoresSeedService } from './services/stores-seed.service';
@@ -27,11 +29,11 @@ import { InventoryAlegraFactory } from './alegra/inventory-alegra.factory';
 import { InventoryAlegraSync } from './services/inventory-alegra-sync.service';
 import { InventoryStockService } from './services/inventory-stock.service';
 import { InventoryIngresoService } from './services/inventory-ingreso.service';
-import { InventorySyncConfigService } from './services/inventory-sync-config.service';
 import { InventoryStatsService } from './services/inventory-stats.service';
 import { InventoryController } from './inventory.controller';
 import { PurchaseOrdersService } from './services/purchase-orders.service';
 import { PurchaseOrdersController } from './purchase-orders.controller';
+import { SaleSyncLogsController } from './sale-sync-logs.controller';
 
 @Module({
   imports: [
@@ -51,10 +53,12 @@ import { PurchaseOrdersController } from './purchase-orders.controller';
       ProductWarehouseAlegraItem,
       AlegraProductCache,
       ProductImportDraft,
+      SaleSyncIssue,
     ]),
     SharedModule,
+    InvoicesModule,
   ],
-  controllers: [InventoryController, PurchaseOrdersController],
+  controllers: [InventoryController, PurchaseOrdersController, SaleSyncLogsController],
   providers: [
     StoresSeedService,
     InventoryService,
@@ -63,7 +67,6 @@ import { PurchaseOrdersController } from './purchase-orders.controller';
     InventoryAlegraSync,
     InventoryStockService,
     InventoryIngresoService,
-    InventorySyncConfigService,
     InventoryStatsService,
     PurchaseOrdersService,
     ProductAlegraPublishService,
@@ -75,7 +78,6 @@ import { PurchaseOrdersController } from './purchase-orders.controller';
     ColorService,
     InventoryAlegraSync,
     InventoryIngresoService,
-    InventorySyncConfigService,
     InventoryStatsService,
     PurchaseOrdersService,
   ],

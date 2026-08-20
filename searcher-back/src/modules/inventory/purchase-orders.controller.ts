@@ -30,11 +30,16 @@ import {
   CreateWarehouseDto,
 } from './entities/dto/create-purchase-order.dto';
 
+// Logs non-HttpException errors here (their only touchpoint before leaving the controller layer),
+// then rethrows the ORIGINAL error untouched — flattening it into a bare 500 HttpException here
+// would strip its real type (QueryFailedError, axios error, ...) before AllExceptionsFilter ever
+// gets a chance to decode it into a real status/message.
 function rethrow(err: unknown, logger: Logger, context: string): never {
-  if (err instanceof HttpException) throw err;
-  const msg = (err as any)?.message ?? 'Internal server error';
-  logger.error(`[PurchaseOrdersController] ${context}: ${msg}`, (err as any)?.stack);
-  throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+  if (!(err instanceof HttpException)) {
+    const msg = (err as any)?.message ?? 'Internal server error';
+    logger.error(`[PurchaseOrdersController] ${context}: ${msg}`, (err as any)?.stack);
+  }
+  throw err;
 }
 
 function parseOrderId(raw: string): number {
@@ -107,7 +112,7 @@ export class PurchaseOrdersController {
   @Roles(UserRole.ADMIN, UserRole.FACTURACION)
   async create(@Body() dto: CreatePurchaseOrderDto, @Request() req: any) {
     try {
-      return await this.service.create(dto, req.user?.id ?? null);
+      return await this.service.create(dto, req.user?.username ?? null);
     } catch (err) {
       rethrow(err, this.logger, 'create');
     }
@@ -121,7 +126,7 @@ export class PurchaseOrdersController {
     @Request() req: any,
   ) {
     try {
-      return await this.service.update(parseOrderId(id), dto, req.user?.id ?? null);
+      return await this.service.update(parseOrderId(id), dto, req.user?.username ?? null);
     } catch (err) {
       rethrow(err, this.logger, 'update');
     }
@@ -142,7 +147,7 @@ export class PurchaseOrdersController {
   @Roles(UserRole.ADMIN, UserRole.FACTURACION)
   async submitDraft(@Param('id') id: string, @Request() req: any) {
     try {
-      return await this.service.submitDraft(parseOrderId(id), req.user?.id ?? null);
+      return await this.service.submitDraft(parseOrderId(id), req.user?.username ?? null);
     } catch (err) {
       rethrow(err, this.logger, 'submitDraft');
     }
@@ -157,7 +162,7 @@ export class PurchaseOrdersController {
     @Request() req: any,
   ) {
     try {
-      return await this.service.cancel(parseOrderId(id), dto, req.user?.id ?? null);
+      return await this.service.cancel(parseOrderId(id), dto, req.user?.username ?? null);
     } catch (err) {
       rethrow(err, this.logger, 'cancel');
     }
@@ -168,7 +173,7 @@ export class PurchaseOrdersController {
   @Roles(UserRole.ADMIN)
   async retryInventory(@Param('id') id: string, @Request() req: any) {
     try {
-      return await this.service.retryInventory(parseOrderId(id), req.user?.id ?? null);
+      return await this.service.retryInventory(parseOrderId(id), req.user?.username ?? null);
     } catch (err) {
       rethrow(err, this.logger, 'retryInventory');
     }

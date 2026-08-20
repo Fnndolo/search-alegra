@@ -9,8 +9,8 @@
       </p>
     </div>
 
-    <div class="flex flex-wrap items-end gap-2">
-      <div class="flex flex-col gap-1 min-w-[200px]">
+    <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end gap-2 w-full md:w-auto">
+      <div class="flex flex-col gap-1 w-full sm:min-w-[200px] sm:w-auto">
         <label class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Sede</label>
         <p-dropdown
           [options]="sedes"
@@ -23,12 +23,14 @@
           (onChange)="onStoreChange()">
         </p-dropdown>
       </div>
-      <button pButton type="button" label="Sincronizar cache" icon="pi pi-sync" size="small" [outlined]="true"
-              [loading]="syncingCache" [disabled]="!selectedStoreKey" (click)="syncCache()"></button>
-      <button pButton type="button" label="Generar borradores" icon="pi pi-file-plus" size="small" [outlined]="true"
-              [loading]="generatingDrafts" [disabled]="!selectedStoreKey" (click)="generateDrafts()"></button>
-      <button pButton type="button" icon="pi pi-refresh" size="small" severity="secondary" [text]="true"
-              [disabled]="!selectedStoreKey" (click)="loadDrafts()" pTooltip="Recargar lista"></button>
+      <div class="flex flex-wrap gap-2">
+        <button pButton type="button" label="Sincronizar cache" icon="pi pi-sync" size="small" [outlined]="true"
+                [loading]="syncingCache" [disabled]="!selectedStoreKey" (click)="syncCache()"></button>
+        <button pButton type="button" label="Generar borradores" icon="pi pi-file-plus" size="small" [outlined]="true"
+                [loading]="generatingDrafts" [disabled]="!selectedStoreKey" (click)="generateDrafts()"></button>
+        <button pButton type="button" icon="pi pi-refresh" size="small" severity="secondary" [text]="true"
+                [disabled]="!selectedStoreKey" (click)="loadDrafts()" pTooltip="Recargar lista"></button>
+      </div>
     </div>
   </div>
 
@@ -45,22 +47,26 @@
       <span class="px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">Importados: {{ counts.imported }}</span>
     </div>
 
-    <div class="flex flex-wrap items-center gap-2 ml-auto">
+    <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2 w-full md:w-auto md:ml-auto">
       <p-dropdown
         [options]="statusOptions"
         [(ngModel)]="statusFilter"
         optionLabel="label"
         optionValue="value"
         placeholder="Estado"
-        styleClass="w-40"
+        styleClass="w-full sm:w-40"
         appendTo="body"
         (onChange)="onStatusFilterChange()">
       </p-dropdown>
-      <p-iconfield>
+      <p-iconfield class="w-full sm:w-auto">
         <p-inputicon styleClass="pi pi-search" />
         <input pInputText [(ngModel)]="searchValue" (ngModelChange)="onSearchChange()"
-               placeholder="Buscar por nombre o SKU..." class="w-64" />
+               placeholder="Buscar por nombre o SKU..." class="w-full sm:w-64" />
       </p-iconfield>
+      <label class="flex items-center gap-2 text-sm text-surface-600 whitespace-nowrap px-1">
+        <p-checkbox [(ngModel)]="stockFilter" [binary]="true" (onChange)="onStockFilterChange()"></p-checkbox>
+        Cantidad en existencia
+      </label>
     </div>
   </div>
 
@@ -72,19 +78,26 @@
   <div *ngIf="selectedStoreKey && !loadingDrafts" class="divide-y divide-surface-100">
     <div *ngFor="let draft of drafts" class="px-5 py-4 flex flex-col gap-3">
 
-      <div class="flex items-center justify-between gap-3">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <div class="font-medium text-surface-800">{{ draft.suggested_name }}</div>
           <div class="text-xs text-surface-400 font-mono">SKU sugerido: {{ draft.suggested_sku || '—' }}</div>
           <div class="text-xs mt-0.5" [class.text-surface-400]="warehouseNameFor(draft)" [class.text-amber-600]="!warehouseNameFor(draft)">
             Bodega: {{ warehouseNameFor(draft) || 'sin vincular — sincronizá bodegas antes de importar' }}
           </div>
+          <div class="text-xs mt-0.5 text-surface-500">
+            Alegra reporta:
+            <span *ngIf="draft.alegra_product_cache?.available_quantity != null; else sinCantidad" class="font-semibold text-surface-700">
+              {{ draft.alegra_product_cache?.available_quantity }} unidad(es)
+            </span>
+            <ng-template #sinCantidad><span class="italic">sin cantidad trackeada</span></ng-template>
+          </div>
         </div>
         <p-tag [value]="draft.status" [severity]="statusSeverity(draft.status)"></p-tag>
       </div>
 
       <div *ngIf="draft.status !== 'imported'" class="flex flex-col gap-3">
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 items-end">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end">
           <div class="flex flex-col gap-1">
             <label class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Categoría *</label>
             <p-dropdown
@@ -114,14 +127,14 @@
 
         <div class="flex flex-col gap-2 border-t border-surface-100 pt-3">
           <p class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Variantes (color + SKU) *</p>
-          <div *ngFor="let variant of editFor(draft).variants; let i = index" class="flex items-end gap-2">
+          <div *ngFor="let variant of editFor(draft).variants; let i = index" class="flex flex-col sm:flex-row sm:items-end gap-2">
             <div class="flex flex-col gap-1 flex-1">
               <app-color-picker [initialColor]="variant.preview" (colorSelected)="onDraftColorSelected(draft, i, $event)"></app-color-picker>
             </div>
             <div class="flex flex-col gap-1 flex-1">
               <input pInputText [(ngModel)]="variant.sku" [name]="'draftSku' + draft.id + i" placeholder="SKU/UPC" class="w-full" />
             </div>
-            <button pButton type="button" icon="pi pi-trash" severity="danger" [text]="true" size="small"
+            <button pButton type="button" icon="pi pi-trash" severity="danger" [text]="true" size="small" class="self-end sm:self-auto"
                     *ngIf="editFor(draft).variants.length > 1" (click)="removeVariantRow(draft, i)"></button>
           </div>
           <button pButton type="button" label="Agregar variante" icon="pi pi-plus" severity="secondary" [text]="true" size="small"
@@ -129,18 +142,104 @@
         </div>
       </div>
 
-      <div *ngIf="draft.status !== 'imported'" class="flex justify-end gap-2">
+      <div *ngIf="draft.status !== 'imported'" class="flex flex-wrap justify-end gap-2">
         <button pButton type="button" label="Guardar configuración" icon="pi pi-save" size="small" [outlined]="true"
+                pTooltip="Guarda sin importar todavía" tooltipPosition="top"
                 [loading]="saving[draft.id]" (click)="saveDraft(draft)"></button>
         <button pButton type="button" label="Importar" icon="pi pi-check" size="small"
-                [loading]="importingId === draft.id" [disabled]="draft.status !== 'configured'"
-                (click)="importDraft(draft)"></button>
+                pTooltip="Guarda la configuración e importa en un solo paso" tooltipPosition="top"
+                [loading]="importingId === draft.id" (click)="importDraft(draft)"></button>
       </div>
 
-      <div *ngIf="draft.status === 'imported'" class="text-xs text-surface-400">
-        Importado como producto local{{ draft.product?.name ? ' — ' + draft.product?.name : '' }}.
+      <div *ngIf="draft.status === 'imported'" class="flex flex-col gap-3">
+        <div class="text-xs text-surface-400">
+          Importado como producto local{{ draft.product?.name ? ' — ' + draft.product?.name : '' }}.
+        </div>
+
+        <div *ngIf="draft.has_identifier && draft.alegra_product_cache?.available_quantity != null"
+             class="border border-surface-200 rounded-lg p-3 flex flex-col gap-3" [attr.data-unit-container]="draft.id">
+
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <p class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Importar unidades (IMEI/serial)</p>
+            <span class="text-xs" *ngIf="!unitStateFor(draft).loading">
+              <span class="font-semibold text-surface-700">{{ unitStateFor(draft).createdCount }}</span> creadas
+              —
+              <span class="font-semibold" [class.text-red-600]="(remainingUnits(draft) ?? 0) <= 0" [class.text-surface-700]="(remainingUnits(draft) ?? 0) > 0">
+                {{ remainingUnits(draft) }} restantes
+              </span>
+            </span>
+          </div>
+
+          <div *ngIf="unitStateFor(draft).loading" class="text-xs text-surface-400 flex items-center gap-2">
+            <i class="pi pi-spin pi-spinner"></i> Cargando variantes...
+          </div>
+
+          <ng-container *ngIf="!unitStateFor(draft).loading">
+            <div class="flex gap-2 items-center" *ngIf="(remainingUnits(draft) ?? 1) > 0">
+              <input pInputText [(ngModel)]="unitStateFor(draft).scanValue" [name]="'unitScan' + draft.id"
+                     [attr.data-unit-scan]="draft.id"
+                     placeholder="Escaneá o escribí el UPC de la variante..."
+                     class="flex-1" (keydown.enter)="onUnitScanEnter(draft, $event)" />
+              <button pButton type="button" icon="pi pi-camera" severity="secondary" [text]="true"
+                      pTooltip="Escanear UPC (cámara)" (click)="openUnitScanScanner(draft)"></button>
+            </div>
+            <div *ngIf="(remainingUnits(draft) ?? 1) <= 0" class="text-xs text-amber-600">
+              Ya se alcanzó la cantidad que reporta Alegra ({{ draft.alegra_product_cache?.available_quantity }}) — no se pueden cargar más unidades para este producto.
+            </div>
+
+            <div *ngIf="unitStateFor(draft).creatingVariant" class="border border-dashed border-surface-300 rounded-lg p-3 flex flex-col gap-2 bg-surface-50">
+              <p class="text-xs text-surface-500">Ese UPC no coincide con ninguna variante — creá la variante de color para asignarlo.</p>
+              <div class="flex flex-col sm:flex-row gap-2">
+                <app-color-picker [initialColor]="unitStateFor(draft).newVariantPreview"
+                                   (colorSelected)="onUnitVariantColorSelected(draft, $event)"></app-color-picker>
+                <input pInputText [(ngModel)]="unitStateFor(draft).newVariantSku" [name]="'newUnitVariantSku' + draft.id"
+                       placeholder="UPC" class="flex-1" />
+              </div>
+              <div class="flex gap-2 justify-end">
+                <button pButton type="button" label="Cancelar" severity="secondary" [text]="true" size="small"
+                        (click)="cancelCreateUnitVariant(draft)"></button>
+                <button pButton type="button" label="Guardar variante" icon="pi pi-check" size="small"
+                        [loading]="unitStateFor(draft).submitting" (click)="saveNewUnitVariant(draft)"></button>
+              </div>
+            </div>
+
+            <div *ngFor="let v of unitStateFor(draft).variants; let vi = index">
+              <div *ngIf="v.pending.length" class="flex flex-col gap-2 border-t border-surface-100 pt-2">
+                <div class="flex items-center gap-2 text-xs font-medium text-surface-700">
+                  <span class="inline-block w-3 h-3 rounded-full border border-surface-300" [style.background]="(v.color?.hexCode ?? v.color?.hex_code) || '#e5e7eb'"></span>
+                  {{ v.color?.name || 'Sin color' }} — {{ v.sku }}
+                </div>
+                <div *ngFor="let unit of v.pending; let ui = index" class="flex gap-1 items-center">
+                  <input pInputText [(ngModel)]="unit.identifier" [name]="'unit' + draft.id + vi + ui"
+                         [attr.data-unit-key]="draft.id + '-' + vi + '-' + ui"
+                         placeholder="IMEI / serial" class="flex-1"
+                         (keydown.enter)="onUnitImeiEnter(draft, $event)" />
+                  <button pButton type="button" icon="pi pi-camera" severity="secondary" [text]="true" size="small"
+                          pTooltip="Escanear IMEI/serial" (click)="openUnitImeiScanner(draft, vi, ui)"></button>
+                  <button pButton type="button" icon="pi pi-trash" severity="danger" [text]="true" size="small"
+                          (click)="removeUnitRow(draft, vi, ui)"></button>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex justify-end" *ngIf="hasPendingUnits(draft)">
+              <button pButton type="button" label="Guardar unidades" icon="pi pi-save" size="small"
+                      [loading]="unitStateFor(draft).submitting" (click)="submitUnits(draft)"></button>
+            </div>
+          </ng-container>
+        </div>
       </div>
     </div>
+
+    <app-barcode-scanner-modal
+      [visible]="unitScannerVisible"
+      (visibleChange)="unitScannerVisible = $event"
+      [header]="unitScannerMode === 'imei' ? 'Escaneando IMEI / serial' : 'Escaneando UPC de variante'"
+      [badgeIcon]="unitScannerMode === 'imei' ? 'pi pi-mobile' : 'pi pi-barcode'"
+      [badgeColor]="unitScannerMode === 'imei' ? 'amber' : 'primary'"
+      [continuous]="false"
+      (scanned)="onUnitBarcodeScanned(unitScannerDraft!, $event)">
+    </app-barcode-scanner-modal>
 
     <div *ngIf="!drafts.length" class="px-5 py-10 text-center text-surface-400 text-sm">
       Sin borradores para esta sede{{ searchValue || statusFilter ? ' con ese filtro' : '' }}. Sincronizá el cache y generá borradores para empezar.

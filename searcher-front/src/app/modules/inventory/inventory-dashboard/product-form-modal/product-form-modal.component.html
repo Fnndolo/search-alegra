@@ -7,6 +7,7 @@
   (onHide)="close()"
   header="Nuevo Producto"
   [style]="{ width: '520px' }"
+  [breakpoints]="{ '960px': '75vw', '640px': '95vw' }"
   styleClass="!rounded-xl">
 
   <div class="flex flex-col gap-4 pt-2">
@@ -60,7 +61,7 @@
     <div class="flex flex-col gap-3 border-t border-surface-100 pt-4">
       <p class="text-xs font-semibold text-surface-500 uppercase tracking-wide">Variantes iniciales (color + SKU)</p>
 
-      <div *ngFor="let variant of variants; let i = index" class="flex items-end gap-2">
+      <div *ngFor="let variant of variants; let i = index" class="flex flex-col md:flex-row md:items-end gap-2">
         <div class="flex flex-col gap-1 flex-1">
           <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">Color *</label>
           <app-color-picker [initialColor]="variant.preview" (colorSelected)="onVariantColorSelected(i, $event)"></app-color-picker>
@@ -68,15 +69,25 @@
 
         <div class="flex flex-col gap-1 flex-1">
           <label class="text-xs font-semibold text-surface-600 uppercase tracking-wide">SKU *</label>
-          <input pInputText [(ngModel)]="variant.sku" [name]="'sku' + i" placeholder="Ej: IPHONE17PM-SILVER" class="w-full" />
+          <div class="flex gap-1">
+            <input pInputText [(ngModel)]="variant.sku" [name]="'sku' + i" placeholder="Ej: IPHONE17PM-SILVER" class="w-full" />
+            <button pButton type="button" icon="pi pi-camera" severity="secondary" [text]="true"
+                    pTooltip="Escanear código de barras" (click)="openSkuScanner(i)"></button>
+          </div>
         </div>
 
         <button pButton type="button" icon="pi pi-trash" severity="danger" [text]="true"
+                class="self-end md:self-auto"
                 *ngIf="variants.length > 1" (click)="removeVariantRow(i)"></button>
       </div>
 
       <button pButton type="button" label="Agregar otra variante" icon="pi pi-plus" severity="secondary" [text]="true"
               class="self-start" (click)="addVariantRow()"></button>
+
+      <div *ngIf="showFungibleMultiVariantWarning" class="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        <i class="pi pi-exclamation-triangle mt-0.5"></i>
+        <span>Este producto tiene más de un color y no requiere identificador. Si vendés en Alegra, no vamos a poder saber qué color se vendió — considerá activar "Requiere identificador" (IMEI/serial) si eso te importa.</span>
+      </div>
     </div>
 
   </div>
@@ -91,3 +102,9 @@
   </ng-template>
 
 </p-dialog>
+
+<app-barcode-scanner-modal
+  [(visible)]="scannerVisible"
+  header="Escanear SKU"
+  (scanned)="onSkuScanned($event)">
+</app-barcode-scanner-modal>

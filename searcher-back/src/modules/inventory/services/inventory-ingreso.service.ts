@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
@@ -12,6 +12,7 @@ import { MovementType } from '../entities/enums';
 export interface IngresoUnidadesDto {
   sedeId: string;
   bodegaId?: string;
+  productVariantId?: string;
   unidades: {
     identifier?: string;
     precioVenta?: number;
@@ -57,12 +58,15 @@ export class InventoryIngresoService {
   ): Promise<IngresoUnidadesResult> {
     const product = await this.inventoryService.findProductById(productId);
 
-    // Todavía no hay manejo de color en este flujo — se usa la primera ProductVariant del producto.
-    const productVariant = await this.productVariantRepo.findOne({
-      where: { product: { id: product.id } },
-      order: { created_at: 'ASC' },
-    });
-    if (!productVariant) throw new NotFoundException(`Product ${productId} has no variants`);
+    const productVariant = dto.productVariantId
+      ? await this.productVariantRepo.findOne({
+          where: { id: dto.productVariantId, product: { id: product.id } },
+        })
+      : await this.productVariantRepo.findOne({
+          where: { product: { id: product.id } },
+          order: { created_at: 'ASC' },
+        });
+    if (!productVariant) throw new NotFoundException(`Product ${productId} has no matching variant`);
 
     const store = await this.inventoryService.findStoreById(dto.sedeId);
     if (!store) throw new NotFoundException(`Store ${dto.sedeId} not found`);
@@ -83,11 +87,25 @@ export class InventoryIngresoService {
 
     for (const row of dto.unidades) {
       try {
+        const identifier = row.identifier?.trim() || null;
+        // Same uniqueness guard purchase-orders.service.ts already applies before creating a
+        // Variant — without it, this manual entry flow could silently create a second unit with
+        // an IMEI that's already active elsewhere, breaking FIFO matching on sale.
+        if (identifier) {
+          const existing = await this.variantRepo.findOne({ where: { identifier } });
+          if (existing) {
+            throw new BadRequestException(
+              `El identificador ${identifier} ya existe (unidad ${existing.id}) — no se puede ingresar duplicado.`,
+            );
+          }
+        }
+
         if (!preview) {
           const variant = this.variantRepo.create({
             product_variant: productVariant,
             warehouse,
-            identifier: row.identifier?.trim() ?? null,
+            identifier,
+            cost_price: row.precioCosto ?? null,
             entry_date: new Date(),
           });
           const saved = await this.variantRepo.save(variant);
@@ -129,6 +147,14 @@ export class InventoryIngresoService {
     };
   }
 
+  async contarUnidadesCreadas(productId: string): Promise<number> {
+    return this.variantRepo
+      .createQueryBuilder('v')
+      .innerJoin('v.product_variant', 'pv')
+      .where('pv.product_id = :productId', { productId })
+      .getCount();
+  }
+
   /**
    * Busca una unidad por su `identifier`. Antes existían `buscarUnidadPorImei`/`buscarUnidadPorSerial`
    * por separado — `buscarUnidadPorSerial` buscaba (por error) por `barcode` en vez del serial.
@@ -142,5 +168,48 @@ export class InventoryIngresoService {
       .leftJoinAndSelect('product.category', 'category')
       .where('v.identifier = :identifier', { identifier })
       .getOne();
+  }
+
+  /**
+   * Busca primero por IMEI/serial de unidad (`buscarUnidadPorIdentifier`); si no matchea, intenta
+   * el mismo texto contra el SKU de una variante de color (`ProductVariant.sku`) — cubre escanear
+   * la etiqueta de la CAJA/variante (sin una unidad puntual todavía recibida) en vez de la etiqueta
+   * de la unidad física. Devuelve una forma unificada con `matchType` para que el caller sepa cuál
+   * de los dos casos fue.
+   */
+  async buscarPorIdentifierOSku(query: string): Promise<{
+    matchType: 'unit' | 'variant';
+    identifier: string | null;
+    active: boolean;
+    sale_price: number | null;
+    product_variant: ProductVariant;
+  } | null> {
+    const unit = await this.buscarUnidadPorIdentifier(query);
+    if (unit) {
+      return {
+        matchType: 'unit',
+        identifier: unit.identifier,
+        active: unit.active,
+        sale_price: unit.sale_price,
+        product_variant: unit.product_variant,
+      };
+    }
+
+    const variant = await this.productVariantRepo
+      .createQueryBuilder('pv')
+      .leftJoinAndSelect('pv.product', 'product')
+      .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('pv.color', 'color')
+      .where('LOWER(pv.sku) = LOWER(:sku)', { sku: query.trim() })
+      .getOne();
+    if (!variant) return null;
+
+    return {
+      matchType: 'variant',
+      identifier: null,
+      active: variant.active,
+      sale_price: variant.product.sale_price,
+      product_variant: variant,
+    };
   }
 }

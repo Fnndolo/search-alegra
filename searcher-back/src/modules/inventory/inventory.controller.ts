@@ -25,20 +25,21 @@ import {
   InventoryIngresoService,
   IngresoUnidadesDto,
 } from './services/inventory-ingreso.service';
-import {
-  InventorySyncConfigService,
-  UpdateSyncConfigDto,
-} from './services/inventory-sync-config.service';
 import { InventoryStatsService } from './services/inventory-stats.service';
 import { ProductAlegraPublishService } from './services/product-alegra-publish.service';
 import { InventoryAlegraFactory } from './alegra/inventory-alegra.factory';
 import { AlegraImportService } from './services/alegra-import.service';
 
+// Logs non-HttpException errors here (their only touchpoint before leaving the controller layer),
+// then rethrows the ORIGINAL error untouched — flattening it into a bare 500 HttpException here
+// would strip its real type (QueryFailedError, axios error, ...) before AllExceptionsFilter ever
+// gets a chance to decode it into a real status/message.
 function rethrow(err: unknown, logger: Logger, context: string): never {
-  if (err instanceof HttpException) throw err;
-  const msg = (err as any)?.message ?? 'Internal server error';
-  logger.error(`[InventoryController] ${context}: ${msg}`, (err as any)?.stack);
-  throw new HttpException(msg, HttpStatus.INTERNAL_SERVER_ERROR);
+  if (!(err instanceof HttpException)) {
+    const msg = (err as any)?.message ?? 'Internal server error';
+    logger.error(`[InventoryController] ${context}: ${msg}`, (err as any)?.stack);
+  }
+  throw err;
 }
 
 @Controller('inventory')
@@ -51,7 +52,6 @@ export class InventoryController {
     private readonly inventoryService: InventoryService,
     private readonly stockService: InventoryStockService,
     private readonly ingresoService: InventoryIngresoService,
-    private readonly syncConfigService: InventorySyncConfigService,
     private readonly statsService: InventoryStatsService,
     private readonly publishService: ProductAlegraPublishService,
     private readonly alegraFactory: InventoryAlegraFactory,
@@ -78,6 +78,16 @@ export class InventoryController {
       return await this.colorService.listColors();
     } catch (err) {
       rethrow(err, this.logger, 'getColors');
+    }
+  }
+
+  @Post('colors')
+  async createColor(@Body() body: { name: string; hexCode?: string }) {
+    try {
+      const color = await this.colorService.findOrCreateColor(body.name, body.hexCode);
+      return { id: color.id, name: color.name, hexCode: color.hex_code };
+    } catch (err) {
+      rethrow(err, this.logger, 'createColor');
     }
   }
 
@@ -554,27 +564,6 @@ export class InventoryController {
   }
 
   // ---------------------------------------------------------------------------
-  // Stock — unit entry
-  // ---------------------------------------------------------------------------
-
-  @Post('stock/entry-quantity')
-  @HttpCode(HttpStatus.CREATED)
-  async stockEntry(
-    @Body()
-    body: {
-      variantId: string;
-      warehouseId: string;
-      quantity: number;
-    },
-  ) {
-    try {
-      return await this.stockService.ingresoStock(body.variantId, body.warehouseId, body.quantity);
-    } catch (err) {
-      rethrow(err, this.logger, 'stockEntry');
-    }
-  }
-
-  // ---------------------------------------------------------------------------
   // Stock — query
   // ---------------------------------------------------------------------------
 
@@ -600,6 +589,16 @@ export class InventoryController {
   // Bulk unit entry
   // ---------------------------------------------------------------------------
 
+  @Get('products/:productId/unit-count')
+  async getUnitCount(@Param('productId') productId: string) {
+    try {
+      const created = await this.ingresoService.contarUnidadesCreadas(productId);
+      return { created };
+    } catch (err) {
+      rethrow(err, this.logger, 'getUnitCount');
+    }
+  }
+
   @Post('products/:productId/unit-entry')
   async unitEntry(
     @Param('productId') productId: string,
@@ -621,12 +620,14 @@ export class InventoryController {
         throw new HttpException('identifier is required', HttpStatus.BAD_REQUEST);
       }
 
-      const unit = await this.ingresoService.buscarUnidadPorIdentifier(identifier.trim());
+      // Tries IMEI/serial (a physical unit) first, then falls back to matching a variant's SKU
+      // (e.g. scanning the box/variant label before any unit has been received yet).
+      const match = await this.ingresoService.buscarPorIdentifierOSku(identifier.trim());
 
-      if (!unit) {
+      if (!match) {
         throw new HttpException('Unit not found', HttpStatus.NOT_FOUND);
       }
-      return unit;
+      return match;
     } catch (err) {
       rethrow(err, this.logger, 'searchUnit');
     }
@@ -687,28 +688,6 @@ export class InventoryController {
       return await this.inventoryService.resolveItemsConfig(body.store.trim(), ids);
     } catch (err) {
       rethrow(err, this.logger, 'resolveItemsConfig');
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Sync configuration
-  // ---------------------------------------------------------------------------
-
-  @Get('config/sync')
-  async getSyncConfig() {
-    try {
-      return await this.syncConfigService.getFullConfig();
-    } catch (err) {
-      rethrow(err, this.logger, 'getSyncConfig');
-    }
-  }
-
-  @Patch('config/sync')
-  async updateSyncConfig(@Body() body: UpdateSyncConfigDto) {
-    try {
-      return await this.syncConfigService.updateConfig(body);
-    } catch (err) {
-      rethrow(err, this.logger, 'updateSyncConfig');
     }
   }
 
@@ -919,6 +898,7 @@ export class InventoryController {
     @Query('storeKey') storeKey?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
+    @Query('hasStock') hasStock?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -927,6 +907,7 @@ export class InventoryController {
         storeKey: storeKey?.trim() || undefined,
         status: status?.trim() || undefined,
         search: search?.trim() || undefined,
+        hasStock: hasStock === 'true' || undefined,
         page: page ? Number(page) : 0,
         limit: limit ? Math.min(Number(limit), 100) : 50,
       });

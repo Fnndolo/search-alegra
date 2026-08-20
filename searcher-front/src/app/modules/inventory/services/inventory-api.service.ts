@@ -15,7 +15,6 @@ import {
   ProductoDetalle,
   ProductVariant,
   Sede,
-  SyncConfig,
   UnidadInventario,
 } from '../models/inventory.models';
 
@@ -72,11 +71,6 @@ export interface UpdateProductoDto {
   hasIdentifier?: boolean;
   negativeSell?: boolean;
   salePrice?: number | null;
-}
-
-export interface UpdateSyncConfigDto {
-  globalMode: 'auto' | 'manual';
-  storeOverrides: Array<{ storeId: string; mode: 'auto' | 'manual' | null }>;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -141,6 +135,12 @@ export class InventoryApiService {
     );
   }
 
+  /** Unidades (Variant) ya creadas para un producto, sumando todas sus variantes de color —
+   *  usado para el tope de importe parcial multi-sesión desde Pendientes. */
+  getUnitCount(productoId: string): Observable<{ created: number }> {
+    return this.http.get<{ created: number }>(`${this.api}/products/${productoId}/unit-count`);
+  }
+
   buscarPorImei(imei: string): Observable<UnidadInventario> {
     return this.http.get<UnidadInventario>(`${this.api}/units/search`, { params: { identifier: imei } });
   }
@@ -172,16 +172,12 @@ export class InventoryApiService {
     return this.http.patch<Color>(`${this.api}/colors/${id}`, body);
   }
 
+  createColor(body: { name: string; hexCode?: string }): Observable<Color> {
+    return this.http.post<Color>(`${this.api}/colors`, body);
+  }
+
   getCategorias(): Observable<Categoria[]> {
     return this.http.get<Categoria[]>(`${this.api}/categories`);
-  }
-
-  getSyncConfig(): Observable<SyncConfig> {
-    return this.http.get<SyncConfig>(`${this.api}/config/sync`);
-  }
-
-  updateSyncConfig(body: UpdateSyncConfigDto): Observable<SyncConfig> {
-    return this.http.patch<SyncConfig>(`${this.api}/config/sync`, body);
   }
 
   createCategoria(body: { nombre: string; descripcion?: string }): Observable<Categoria> {
@@ -283,24 +279,26 @@ export class InventoryApiService {
       .pipe(map((list) => list.map(this.toBodega)));
   }
 
-  createBodega(body: { sedeId: string; nombre: string; esPrincipal?: boolean; alegraWarehouseId?: number; alegraStoreKey?: string }): Observable<Bodega> {
+  createBodega(body: { sedeId: string; nombre: string; esPrincipal?: boolean; prefix?: string; alegraWarehouseId?: number; alegraStoreKey?: string }): Observable<Bodega> {
     return this.http
       .post<any>(`${this.api}/warehouses`, {
         storeId: body.sedeId,
         name: body.nombre,
         isMain: body.esPrincipal,
+        prefix: body.prefix,
         alegraWarehouseId: body.alegraWarehouseId,
         alegraStoreKey: body.alegraStoreKey,
       })
       .pipe(map(this.toBodega));
   }
 
-  updateBodega(id: string, body: { nombre?: string; esPrincipal?: boolean; activo?: boolean; alegraWarehouseId?: number; alegraStoreKey?: string }): Observable<Bodega> {
+  updateBodega(id: string, body: { nombre?: string; esPrincipal?: boolean; activo?: boolean; prefix?: string | null; alegraWarehouseId?: number; alegraStoreKey?: string }): Observable<Bodega> {
     return this.http
       .patch<any>(`${this.api}/warehouses/${id}`, {
         name: body.nombre,
         isMain: body.esPrincipal,
         active: body.activo,
+        prefix: body.prefix,
         alegraWarehouseId: body.alegraWarehouseId,
         alegraStoreKey: body.alegraStoreKey,
       })
@@ -367,11 +365,12 @@ export class InventoryApiService {
     return this.http.post(`${this.api}/alegra/generate-drafts`, { storeKey });
   }
 
-  getImportDrafts(f?: { storeKey?: string; status?: ImportDraftStatus; search?: string; page?: number; limit?: number }): Observable<PaginatedResponse<ProductImportDraft>> {
+  getImportDrafts(f?: { storeKey?: string; status?: ImportDraftStatus; search?: string; hasStock?: boolean; page?: number; limit?: number }): Observable<PaginatedResponse<ProductImportDraft>> {
     let p = new HttpParams();
     if (f?.storeKey) p = p.set('storeKey', f.storeKey);
     if (f?.status) p = p.set('status', f.status);
     if (f?.search) p = p.set('search', f.search);
+    if (f?.hasStock) p = p.set('hasStock', 'true');
     if (f?.page != null) p = p.set('page', String(f.page));
     if (f?.limit != null) p = p.set('limit', String(f.limit));
     return this.http.get<PaginatedResponse<ProductImportDraft>>(`${this.api}/import-drafts`, { params: p });

@@ -23,8 +23,6 @@ export type TipoMovimiento =
   | 'RESERVA'
   | 'CANCELACION_RESERVA';
 
-export type SyncMode = 'auto' | 'manual';
-
 export type ImportDraftStatus = 'pending' | 'configured' | 'imported';
 
 // ── Catalog entities ──────────────────────────────────────────────────────────
@@ -48,6 +46,8 @@ export interface Bodega {
   nombre: string;
   activo: boolean;
   es_principal: boolean;
+  /** Prefijo que antepone al nombre del producto al crear el ítem en Alegra (ej. "(P)" para Pereira). Vacío/null para la bodega principal. */
+  prefix: string | null;
   alegra_warehouse_id: number | null;
   alegra_store_key: string | null;
   created_at: string;
@@ -59,7 +59,6 @@ export interface Sede {
   nombre: string;
   store_key: string;
   activo: boolean;
-  alegra_sync_override: SyncMode | null;
   bodegas?: Bodega[];
   created_at: string;
   updated_at: string;
@@ -67,11 +66,17 @@ export interface Sede {
 
 // ── Inventory entities ────────────────────────────────────────────────────────
 
-/** Shared color catalog entry — backend `colors` table. */
+/**
+ * Shared color catalog entry — backend `colors` table.
+ * `hex_code` only shows up when this arrives nested off a ProductVariant/order item (the raw
+ * entity column) instead of through the dedicated /colors endpoint (which maps it to `hexCode`).
+ * Keep both optional here so templates can fall back to whichever one is actually present.
+ */
 export interface Color {
   id: string;
   name: string;
   hexCode: string | null;
+  hex_code?: string | null;
 }
 
 /**
@@ -106,6 +111,8 @@ export interface Producto {
   /** Flattened from the backend's nested `store.name` for convenience in templates/tables. */
   storeName?: string;
   store?: { id: string; name: string } | null;
+  /** Present only right after an update() whose price/name push to Alegra failed for some warehouse. */
+  alegraSyncWarning?: string;
   categoryId?: string;
   category?: Categoria;
   variants?: ProductVariant[];
@@ -184,6 +191,8 @@ export interface AlegraProductCache {
   raw?: Record<string, any> | null;
   alegra_warehouse_id: number | null;
   warehouse_id: string | null;
+  /** Alegra's reported stock for this item, only when it was a genuine positive count (never -1/0). */
+  available_quantity: number | null;
   synced_at: string;
   created_at: string;
   updated_at: string;
@@ -211,22 +220,6 @@ export interface ProductImportDraft {
 }
 
 // ── Sync configuration ────────────────────────────────────────────────────────
-
-export interface SedeOverride {
-  sedeId: string;
-  mode: SyncMode | null;
-}
-
-export interface SyncConfig {
-  globalMode: SyncMode;
-  stores: Array<{
-    id: string;
-    name: string;
-    store_key: string;
-    effectiveMode: SyncMode;
-    override: SyncMode | null;
-  }>;
-}
 
 // ── Paginated response ────────────────────────────────────────────────────────
 
