@@ -1,5 +1,6 @@
 import { Controller, Get, Query, BadRequestException, Logger, InternalServerErrorException, UseGuards } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
+import { InvoicesDetailService } from './invoices-detail.service';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -8,14 +9,48 @@ import { UserRole } from '../entities/user.entity';
 
 @Controller('invoices')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.USUARIO, UserRole.FACTURACION)
+@Roles(UserRole.ADMIN, UserRole.USUARIO, UserRole.FACTURACION, UserRole.COMPRAS)
 export class InvoicesController {
   private readonly logger = new Logger(InvoicesController.name);
 
   constructor(
     private readonly invoicesService: InvoicesService,
+    private readonly invoicesDetailService: InvoicesDetailService,
     private readonly storeCredentialsService: StoreCredentialsService,
   ) {}
+
+  /**
+   * Valida que la tienda exista y sea una sede concreta (no el agregado "todas"),
+   * que es lo que necesitan las operaciones sobre un documento puntual.
+   */
+  private assertPhysicalStore(store?: string): string {
+    if (!store) {
+      throw new BadRequestException('El parámetro "store" es requerido');
+    }
+    if (!this.storeCredentialsService.isValidStore(store)) {
+      throw new BadRequestException(
+        `Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`,
+      );
+    }
+    if (store.toLowerCase() === 'todas') {
+      throw new BadRequestException('Debe indicarse la sede concreta del documento, no "todas".');
+    }
+    return store.toLowerCase();
+  }
+
+  @Get('detail')
+  async getInvoiceDetail(@Query('store') store: string, @Query('id') id: string) {
+    const validStore = this.assertPhysicalStore(store);
+    if (!id) {
+      throw new BadRequestException('El parámetro "id" es requerido');
+    }
+    return this.invoicesDetailService.getInvoiceDetail(validStore, id);
+  }
+
+  @Get('company')
+  async getCompany(@Query('store') store: string) {
+    return this.invoicesDetailService.getCompany(this.assertPhysicalStore(store));
+  }
 
   @Get('all')
   async getAllInvoices(@Query('store') store?: string) {

@@ -49,7 +49,7 @@ export class SidebarComponent {
       label: 'Buscador de Facturas',
       icon: 'pi pi-search',
       route: '/facturas',
-      roles: ['admin', 'usuario', 'facturacion']
+      roles: ['admin', 'usuario', 'facturacion', 'compras']
     },
     {
       label: 'Facturación Electrónica',

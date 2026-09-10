@@ -4,6 +4,7 @@ export enum UserRole {
   ADMIN = 'admin',
   USUARIO = 'usuario',
   FACTURACION = 'facturacion',
+  COMPRAS = 'compras',
 }
 
 export enum UserStatus {

@@ -15,6 +15,20 @@ export const routes: Routes = [
         pathMatch: 'full'
       },
       {
+        path: 'facturas/compra/:store/:id/editar',
+        canActivate: [roleGuard],
+        data: { roles: ['admin', 'compras'] },
+        loadComponent: () => import('./modules/documents/bill-edit/bill-edit.component').then(m => m.BillEditComponent)
+      },
+      {
+        path: 'facturas/compra/:store/:id',
+        loadComponent: () => import('./modules/documents/bill-detail/bill-detail.component').then(m => m.BillDetailComponent)
+      },
+      {
+        path: 'facturas/venta/:store/:id',
+        loadComponent: () => import('./modules/documents/invoice-detail/invoice-detail.component').then(m => m.InvoiceDetailComponent)
+      },
+      {
         path: 'facturas',
         loadComponent: () => import('./modules/invoices/invoices/invoices.component').then(m => m.InvoicesComponent)
       },

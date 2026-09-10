@@ -56,7 +56,8 @@ export class UserManagementComponent implements OnInit {
   roles = [
     { label: 'Administrador', value: 'admin' },
     { label: 'Usuario (Solo Buscador)', value: 'usuario' },
-    { label: 'Facturación (Buscador + Export)', value: 'facturacion' }
+    { label: 'Facturación (Buscador + Export)', value: 'facturacion' },
+    { label: 'Compras (Buscador + Editar Compras)', value: 'compras' }
   ];
 
   statuses = [
@@ -129,6 +130,7 @@ export class UserManagementComponent implements OnInit {
     switch(role) {
       case 'admin': return 'danger';
       case 'facturacion': return 'info';
+      case 'compras': return 'warn';
       default: return 'secondary';
     }
   }

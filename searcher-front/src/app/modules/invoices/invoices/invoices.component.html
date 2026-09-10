@@ -160,14 +160,16 @@
               Vendedor</th>
             <th *ngIf="selectedInvoiceType === 'sales'"
               class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center w-24">Estado</th>
-            <th class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center w-20">Vista</th>
+            <th class="font-semibold uppercase text-[11px] tracking-wider py-4 text-center w-20">Alegra</th>
           </tr>
         </ng-template>
 
         <ng-template pTemplate="body" let-invoice>
-          <tr class="hover:bg-primary-50/30 transition-colors border-b border-surface-100"
+          <tr class="hover:bg-primary-50/30 transition-colors border-b border-surface-100 cursor-pointer"
             [class.bg-green-50]="newInvoiceIds.includes(invoice.id)"
-            [class.bg-red-50]="deletedInvoiceIds.includes(invoice.id)">
+            [class.bg-red-50]="deletedInvoiceIds.includes(invoice.id)"
+            (click)="openDocument(invoice)"
+            title="Ver el detalle del comprobante">
 
             <td class="text-sm text-surface-500 font-medium whitespace-nowrap" [innerHTML]="invoice.date | date:'dd/MM/yyyy' | highlight:filterValue">
             </td>
@@ -228,12 +230,12 @@
             <td class="text-center w-20">
               <button
                 class="px-3 py-1.5 rounded-lg inline-flex items-center justify-center gap-2 bg-white border border-surface-200 shadow-sm text-primary-600 hover:bg-primary-50 transition-all focus:outline-none focus:ring-2 focus:ring-primary-200 group"
-                (click)="selectedInvoiceType === 'sales' ? goToAlegra(invoice.id) : goToAlegraBills(invoice.id)"
-                title="Abrir Original">
+                (click)="$event.stopPropagation(); selectedInvoiceType === 'sales' ? goToAlegra(invoice.id) : goToAlegraBills(invoice.id)"
+                title="Abrir en Alegra">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 transition-transform group-hover:scale-110">
                   <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                 </svg>
-                <span class="text-[10px] font-bold uppercase tracking-tight">Ver</span>
+                <span class="text-[10px] font-bold uppercase tracking-tight">Abrir</span>
               </button>
             </td>
           </tr>

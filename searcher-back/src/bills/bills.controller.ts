@@ -1,15 +1,119 @@
-import { Controller, Get, Query, BadRequestException, Logger, InternalServerErrorException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Put,
+  Post,
+  Body,
+  Param,
+  Query,
+  BadRequestException,
+  Logger,
+  InternalServerErrorException,
+  UseGuards,
+} from '@nestjs/common';
 import { BillsDbService } from './bills.service.db';
+import { BillsDetailService, BillUpdatePayload } from './bills-detail.service';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../entities/user.entity';
 
 @Controller('bills')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN, UserRole.USUARIO, UserRole.FACTURACION, UserRole.COMPRAS)
 export class BillsController {
   private readonly logger = new Logger(BillsController.name);
 
   constructor(
     private readonly billsDbService: BillsDbService,
+    private readonly billsDetailService: BillsDetailService,
     private readonly storeCredentialsService: StoreCredentialsService,
   ) {}
+
+  /**
+   * Valida que la tienda exista y sea una sede concreta (no el agregado "todas"),
+   * que es lo que necesitan las operaciones sobre un documento puntual.
+   */
+  private assertPhysicalStore(store: string): string {
+    if (!store) {
+      throw new BadRequestException('El parámetro "store" es requerido');
+    }
+    if (!this.storeCredentialsService.isValidStore(store)) {
+      throw new BadRequestException(
+        `Tienda inválida: ${store}. Tiendas válidas: ${this.storeCredentialsService.getAllValidStores().join(', ')}`,
+      );
+    }
+    if (store.toLowerCase() === 'todas') {
+      throw new BadRequestException('Debe indicarse la sede concreta del documento, no "todas".');
+    }
+    return store.toLowerCase();
+  }
+
+  // ─── Detalle y edición de una factura de compra ───────────────────────
+
+  @Get('detail')
+  async getBillDetail(@Query('store') store: string, @Query('id') id: string) {
+    const validStore = this.assertPhysicalStore(store);
+    if (!id) {
+      throw new BadRequestException('El parámetro "id" es requerido');
+    }
+    return this.billsDetailService.getBillDetail(validStore, id);
+  }
+
+  @Get('company')
+  async getCompany(@Query('store') store: string) {
+    return this.billsDetailService.getCompany(this.assertPhysicalStore(store));
+  }
+
+  @Get('catalog/providers')
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  async getProviders(@Query('store') store: string, @Query('query') query?: string) {
+    return this.billsDetailService.getProviders(this.assertPhysicalStore(store), query);
+  }
+
+  @Post('catalog/providers')
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  async createProvider(
+    @Query('store') store: string,
+    @Body() body: { name: string; identification?: string; phone?: string; email?: string },
+  ) {
+    const validStore = this.assertPhysicalStore(store);
+    if (!body?.name?.trim()) {
+      throw new BadRequestException('El nombre del proveedor es requerido');
+    }
+    return this.billsDetailService.createProvider(validStore, body);
+  }
+
+  @Get('catalog/items')
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  async getItems(@Query('store') store: string, @Query('query') query?: string) {
+    return this.billsDetailService.getItems(this.assertPhysicalStore(store), query);
+  }
+
+  @Get('catalog/warehouses')
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  async getWarehouses(@Query('store') store: string) {
+    return this.billsDetailService.getWarehouses(this.assertPhysicalStore(store));
+  }
+
+  @Get('catalog/taxes')
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  async getTaxes(@Query('store') store: string) {
+    return this.billsDetailService.getTaxes(this.assertPhysicalStore(store));
+  }
+
+  @Put(':id')
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  async updateBill(
+    @Param('id') id: string,
+    @Query('store') store: string,
+    @Body() body: BillUpdatePayload,
+  ) {
+    const validStore = this.assertPhysicalStore(store);
+    this.logger.log(`✏️ Edición de compra ${id} en ${validStore}`);
+    return this.billsDetailService.updateBill(validStore, id, body || {});
+  }
 
   @Get('all')
   async getAllBills(@Query('store') store: string) {

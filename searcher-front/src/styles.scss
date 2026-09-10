@@ -221,3 +221,17 @@
   font-weight: 600;
   color: #991b1b !important;
 }
+
+/* Impresión: al imprimir un comprobante solo debe salir la hoja del documento,
+   sin el menú lateral ni las barras de la aplicación. */
+@media print {
+  app-sidebar,
+  .no-print {
+    display: none !important;
+  }
+
+  main {
+    overflow: visible !important;
+    padding-top: 0 !important;
+  }
+}

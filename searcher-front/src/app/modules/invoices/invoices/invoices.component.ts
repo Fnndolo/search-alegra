@@ -1,5 +1,6 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { TableModule } from 'primeng/table';
 import { InputTextModule } from 'primeng/inputtext';
 import { PaginatorModule } from 'primeng/paginator';
@@ -116,7 +117,8 @@ export class InvoicesComponent implements OnInit, OnDestroy {
     private invoiceService: InvoiceService,
     private socketService: SocketService,
     private cdr: ChangeDetectorRef,
-    private messageService: MessageService
+    private messageService: MessageService,
+    private router: Router
   ) {
   }
 
@@ -636,6 +638,27 @@ export class InvoicesComponent implements OnInit, OnDestroy {
       pages.push(i);
     }
     return pages;
+  }
+
+  /**
+   * Abre el detalle del comprobante dentro de la aplicación.
+   * La sede sale de la fila (`storeKey`) para que también funcione con el
+   * filtro "Todas las tiendas", donde cada factura vive en una cuenta distinta.
+   */
+  openDocument(invoice: any) {
+    const store = invoice?.storeKey || (this.selectedStore !== 'todas' ? this.selectedStore : '');
+
+    if (!store) {
+      this.messageService.add({
+        severity: 'warn',
+        summary: 'Sede desconocida',
+        detail: 'No se pudo determinar la tienda de este comprobante.'
+      });
+      return;
+    }
+
+    const segment = this.selectedInvoiceType === 'sales' ? 'venta' : 'compra';
+    this.router.navigate(['/facturas', segment, store, invoice.id]);
   }
 
   goToAlegra(id: string) {
