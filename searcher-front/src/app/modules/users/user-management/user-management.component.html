@@ -109,13 +109,15 @@
             <!-- Rol -->
             <div class="flex flex-col gap-2">
                 <label class="text-sm font-semibold text-surface-700 ml-1">Rol</label>
-                <p-dropdown [options]="roles" formControlName="role" styleClass="w-full !rounded-xl !bg-surface-50/50"></p-dropdown>
+                <!-- appendTo="body": el modal tiene overflow:hidden y backdrop-filter, que
+                     recortarían el panel y dejarían las últimas opciones inalcanzables. -->
+                <p-dropdown [options]="roles" formControlName="role" appendTo="body" styleClass="w-full !rounded-xl !bg-surface-50/50"></p-dropdown>
             </div>
 
             <!-- Estado -->
             <div class="flex flex-col gap-2">
                 <label class="text-sm font-semibold text-surface-700 ml-1">Estado</label>
-                <p-dropdown [options]="statuses" formControlName="status" styleClass="w-full !rounded-xl !bg-surface-50/50"></p-dropdown>
+                <p-dropdown [options]="statuses" formControlName="status" appendTo="body" styleClass="w-full !rounded-xl !bg-surface-50/50"></p-dropdown>
             </div>
         </div>
 
