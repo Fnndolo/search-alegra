@@ -14,9 +14,18 @@ const STORE_MAPPING: Record<string, { warehouseId: string, warehouseName: string
     'medellin': { warehouseId: '019c66ef-e6a5-70e1-90c8-9bc2c422138d', warehouseName: 'MEDELLIN', costCenterId: '2', costCenterName: 'SEDE MEDELLIN' },
     'pereira': { warehouseId: '019c66f0-70fb-7698-8a0a-a86826df31dd', warehouseName: 'PEREIRA', costCenterId: '3', costCenterName: 'SEDE PEREIRA' },
     'armenia': { warehouseId: '019c66f0-a218-719b-8af0-36b2599476d9', warehouseName: 'ARMENIA', costCenterId: '4', costCenterName: 'SEDE ARMENIA' },
-    // TODO BOGOTÁ: reemplazar estos 3 valores por los IDs reales de Alegra cuando se cree
-    // la bodega, el centro de costo y la numeración de Bogotá (ver también numberingId más abajo).
-    'bogota': { warehouseId: 'PENDIENTE_BOGOTA_WAREHOUSE_ID', warehouseName: 'BOGOTA', costCenterId: 'PENDIENTE_BOGOTA_COSTCENTER_ID', costCenterName: 'SEDE BOGOTA' },
+    'bogota': { warehouseId: '01a0fdb3-86d5-74fd-acda-22716c3ab0c4', warehouseName: 'BOGOTA', costCenterId: '5', costCenterName: 'SEDE BOGOTA' },
+};
+
+// Numeraciones (resoluciones) de Alegra Kupocell por tienda, tipo "invoice" y electrónicas.
+// Si una tienda no está aquí NO se envía numberTemplate y Alegra cae a su numeración por
+// defecto, que NO es electrónica: por eso se valida explícitamente antes de facturar.
+const STORE_NUMBERING: Record<string, string> = {
+    'pasto': '16',
+    'medellin': '17',
+    'armenia': '18',
+    'pereira': '19',
+    'bogota': '60',
 };
 
 @Injectable()
@@ -355,6 +364,16 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
                 return { success: true, invoiceId: already.kupoInvoiceId, invoiceNumber: already.kupoInvoiceId, skipped: true };
             }
 
+            // 0.b Config de la sede: una bodega vacía o sin resolver viajaría a Alegra como
+            // `warehouse: { id: '' }` y devolvería un error críptico. Se corta antes, con
+            // un mensaje que dice qué falta configurar.
+            if (!params.warehouseId) {
+                throw new Error(
+                    `La tienda "${params.originalStore}" no tiene bodega configurada en Kupocell. ` +
+                    `Créela en Alegra y registre su ID en STORE_MAPPING antes de facturar.`
+                );
+            }
+
             // 1. Mapeo de productos (precargado en masivo; carga puntual en facturación individual)
             const mappings = preloadedMappings || await this.productMappingRepo.find();
 
@@ -442,22 +461,19 @@ export class ElectronicBillingService implements OnApplicationBootstrap {
                 invoicePayload.costCenter = { id: params.costCenterId };
             }
 
-            // 3. Asignar Numeración según tienda (IDs 16 al 19)
-            let numberingId = '';
-            switch (params.originalStore.toLowerCase()) {
-                case 'pasto': numberingId = '16'; break;
-                case 'medellin': numberingId = '17'; break;
-                case 'armenia': numberingId = '18'; break;
-                case 'pereira': numberingId = '19'; break;
-                // TODO BOGOTÁ: poner aquí el ID de numeración de Bogotá cuando se cree en Alegra.
-                // Mientras quede vacío, no se envía numberTemplate y Alegra usa la numeración por defecto.
-                case 'bogota': numberingId = ''; break;
+            // 3. Asignar Numeración según tienda.
+            // Se exige explícitamente: sin numberTemplate, Alegra usa su numeración por
+            // defecto, que NO es electrónica, y emitiría un documento inválido en silencio.
+            const numberingId = STORE_NUMBERING[params.originalStore.toLowerCase()];
+            if (!numberingId) {
+                throw new Error(
+                    `La tienda "${params.originalStore}" no tiene numeración de facturación configurada en Kupocell. ` +
+                    `Configúrela en STORE_NUMBERING antes de facturar.`
+                );
             }
 
-            if (numberingId) {
-                invoicePayload.numberTemplate = { id: numberingId };
-                this.logger.log(`🔢 Usando resolución de facturación ID: ${numberingId} para la tienda: ${params.originalStore}`);
-            }
+            invoicePayload.numberTemplate = { id: numberingId };
+            this.logger.log(`🔢 Usando resolución de facturación ID: ${numberingId} para la tienda: ${params.originalStore}`);
 
             // Asegurar que si no hay ni anotation ni observation, se envie la referencia básica
             if (!invoicePayload.observations && !invoicePayload.anotation) {
