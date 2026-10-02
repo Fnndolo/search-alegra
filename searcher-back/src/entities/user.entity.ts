@@ -5,6 +5,8 @@ export enum UserRole {
   USUARIO = 'usuario',
   FACTURACION = 'facturacion',
   COMPRAS = 'compras',
+  // Edita facturas de compra, pero solo las que tengan un caso abierto en Google Chat
+  INVENTARIO_COMPRAS = 'inventario_compras',
 }
 
 export enum UserStatus {

@@ -95,6 +95,19 @@ export interface InvoiceDetail {
   totals: DocumentTotals;
 }
 
+/** Si el usuario actual puede editar esta compra, y por qué */
+export interface BillEditState {
+  canEdit: boolean;
+  /** true cuando el permiso depende de un caso abierto en Google Chat */
+  requiresCase: boolean;
+  case: {
+    id: string;
+    billNumber: string;
+    openedByChatUser: string | null;
+    openedAt: string;
+  } | null;
+}
+
 export interface CompanyInfo {
   name: string;
   identification: string;
@@ -141,6 +154,11 @@ export class DocumentService {
   getInvoiceDetail(store: string, id: string): Observable<InvoiceDetail> {
     const params = new HttpParams().set('store', store).set('id', id);
     return this.http.get<InvoiceDetail>(`${this.apiUrl}/invoices/detail`, { params });
+  }
+
+  getBillEditState(store: string, id: string): Observable<BillEditState> {
+    const params = new HttpParams().set('store', store).set('id', id);
+    return this.http.get<BillEditState>(`${this.apiUrl}/bills/edit-state`, { params });
   }
 
   getBillCompany(store: string): Observable<CompanyInfo> {

@@ -17,7 +17,7 @@ export const routes: Routes = [
       {
         path: 'facturas/compra/:store/:id/editar',
         canActivate: [roleGuard],
-        data: { roles: ['admin', 'compras'] },
+        data: { roles: ['admin', 'compras', 'inventario_compras'] },
         loadComponent: () => import('./modules/documents/bill-edit/bill-edit.component').then(m => m.BillEditComponent)
       },
       {

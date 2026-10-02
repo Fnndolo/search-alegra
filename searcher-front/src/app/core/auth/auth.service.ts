@@ -8,7 +8,7 @@ import { environment } from '../../../environments/environment';
 export interface User {
   id: number;
   username: string;
-  role: 'admin' | 'usuario' | 'facturacion' | 'compras';
+  role: 'admin' | 'usuario' | 'facturacion' | 'compras' | 'inventario_compras';
   email?: string;
 }
 

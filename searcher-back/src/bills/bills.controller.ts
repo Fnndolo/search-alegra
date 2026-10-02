@@ -6,7 +6,9 @@ import {
   Body,
   Param,
   Query,
+  Request,
   BadRequestException,
+  ForbiddenException,
   Logger,
   InternalServerErrorException,
   UseGuards,
@@ -14,6 +16,9 @@ import {
 import { BillsDbService } from './bills.service.db';
 import { BillsDetailService, BillUpdatePayload } from './bills-detail.service';
 import { StoreCredentialsService } from '../shared/store-credentials.service';
+import { BillEditCaseService } from '../chat/bill-edit-case.service';
+import { BillEditCase } from '../entities/bill-edit-case.entity';
+import { diffBill } from './bill-diff';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -21,7 +26,7 @@ import { UserRole } from '../entities/user.entity';
 
 @Controller('bills')
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Roles(UserRole.ADMIN, UserRole.USUARIO, UserRole.FACTURACION, UserRole.COMPRAS)
+@Roles(UserRole.ADMIN, UserRole.USUARIO, UserRole.FACTURACION, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
 export class BillsController {
   private readonly logger = new Logger(BillsController.name);
 
@@ -29,6 +34,7 @@ export class BillsController {
     private readonly billsDbService: BillsDbService,
     private readonly billsDetailService: BillsDetailService,
     private readonly storeCredentialsService: StoreCredentialsService,
+    private readonly caseService: BillEditCaseService,
   ) {}
 
   /**
@@ -67,13 +73,13 @@ export class BillsController {
   }
 
   @Get('catalog/providers')
-  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
   async getProviders(@Query('store') store: string, @Query('query') query?: string) {
     return this.billsDetailService.getProviders(this.assertPhysicalStore(store), query);
   }
 
   @Post('catalog/providers')
-  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
   async createProvider(
     @Query('store') store: string,
     @Body() body: { name: string; identification?: string; phone?: string; email?: string },
@@ -86,33 +92,102 @@ export class BillsController {
   }
 
   @Get('catalog/items')
-  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
   async getItems(@Query('store') store: string, @Query('query') query?: string) {
     return this.billsDetailService.getItems(this.assertPhysicalStore(store), query);
   }
 
   @Get('catalog/warehouses')
-  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
   async getWarehouses(@Query('store') store: string) {
     return this.billsDetailService.getWarehouses(this.assertPhysicalStore(store));
   }
 
   @Get('catalog/taxes')
-  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
   async getTaxes(@Query('store') store: string) {
     return this.billsDetailService.getTaxes(this.assertPhysicalStore(store));
   }
 
+  /**
+   * Estado de edición de una compra para el usuario actual: le dice al front si
+   * puede editar y, cuando el permiso viene de un caso de Chat, de cuál se trata.
+   */
+  @Get('edit-state')
+  async getEditState(@Query('store') store: string, @Query('id') id: string, @Request() req) {
+    const validStore = this.assertPhysicalStore(store);
+    if (!id) throw new BadRequestException('El parámetro "id" es requerido');
+
+    const role = req.user?.role;
+    if (role === UserRole.ADMIN || role === UserRole.COMPRAS) {
+      return { canEdit: true, requiresCase: false, case: null };
+    }
+
+    if (role !== UserRole.INVENTARIO_COMPRAS) {
+      return { canEdit: false, requiresCase: false, case: null };
+    }
+
+    const openCase = await this.caseService.findOpenCase(validStore, id);
+    return {
+      canEdit: !!openCase,
+      requiresCase: true,
+      case: openCase
+        ? {
+            id: openCase.id,
+            billNumber: openCase.billNumber,
+            openedByChatUser: openCase.openedByChatUser,
+            openedAt: openCase.createdAt,
+          }
+        : null,
+    };
+  }
+
   @Put(':id')
-  @Roles(UserRole.ADMIN, UserRole.COMPRAS)
+  @Roles(UserRole.ADMIN, UserRole.COMPRAS, UserRole.INVENTARIO_COMPRAS)
   async updateBill(
     @Param('id') id: string,
     @Query('store') store: string,
     @Body() body: BillUpdatePayload,
+    @Request() req,
   ) {
     const validStore = this.assertPhysicalStore(store);
-    this.logger.log(`✏️ Edición de compra ${id} en ${validStore}`);
-    return this.billsDetailService.updateBill(validStore, id, body || {});
+    const user = {
+      id: req.user?.id ?? null,
+      username: req.user?.username ?? 'desconocido',
+      role: req.user?.role ?? 'desconocido',
+    };
+
+    // El rol de inventario solo puede editar si hay un caso abierto en Chat para
+    // ESA factura. Se resuelve antes de tocar Alegra.
+    let openCase: BillEditCase | null = null;
+    if (user.role === UserRole.INVENTARIO_COMPRAS) {
+      openCase = await this.caseService.findOpenCase(validStore, id);
+      if (!openCase) {
+        throw new ForbiddenException(
+          'Esta factura de compra no tiene un caso abierto en Google Chat. ' +
+            'Abra un hilo nuevo con `@SmartAlegra compra <numero> <sede>` para habilitar la edición.',
+        );
+      }
+    }
+
+    this.logger.log(`✏️ Edición de compra ${id} en ${validStore} por ${user.username} (${user.role})`);
+
+    // Estado previo, para poder registrar exactamente qué cambió
+    const before = await this.billsDetailService.getBillDetail(validStore, id);
+    const after = await this.billsDetailService.updateBill(validStore, id, body || {});
+
+    // La edición en Alegra ya ocurrió: el registro no debe poder revertirla ni
+    // hacerla ver como fallida, así que se hace aparte y sin lanzar.
+    await this.caseService.recordEdit({
+      store: validStore,
+      billId: String(id),
+      billNumber: after?.number != null ? String(after.number) : null,
+      user,
+      changes: diffBill(before, after),
+      openCase,
+    });
+
+    return after;
   }
 
   @Get('all')

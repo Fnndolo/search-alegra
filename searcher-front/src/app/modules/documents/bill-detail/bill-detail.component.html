@@ -44,6 +44,37 @@
     </div>
 
     <ng-container *ngIf="bill() as doc">
+      <!-- Caso de Google Chat: habilita UNA edición para el rol de inventario -->
+      <div *ngIf="openCase() as chatCase"
+        class="bg-primary-50 border border-primary-200 rounded-xl p-4 flex items-start gap-3 no-print">
+        <i class="pi pi-comments text-primary-600 text-xl mt-0.5"></i>
+        <div class="text-sm text-primary-900">
+          <p class="font-bold">Caso abierto en Google Chat</p>
+          <p class="mt-0.5 text-primary-800">
+            Abierto por <span class="font-semibold">{{ chatCase.openedByChatUser || 'un miembro del espacio' }}</span>
+            el {{ chatCase.openedAt | date:'dd/MM/yyyy HH:mm' }}.
+            Habilita <span class="font-semibold">una sola edición</span>: al guardar se publicará el detalle en el hilo
+            y el caso quedará cerrado.
+          </p>
+        </div>
+      </div>
+
+      <!-- Sin caso: se explica por qué no puede editar -->
+      <div *ngIf="needsCase()"
+        class="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3 no-print">
+        <i class="pi pi-lock text-amber-600 text-xl mt-0.5"></i>
+        <div class="text-sm text-amber-900">
+          <p class="font-bold">Edición bloqueada</p>
+          <p class="mt-0.5 text-amber-800">
+            Esta factura no tiene un caso abierto en Google Chat, o el caso anterior ya se usó.
+            Para habilitarla, abra un hilo nuevo en el espacio mencionando al bot:
+            <code class="bg-white border border-amber-200 rounded px-1.5 py-0.5 font-mono text-xs">
+              &#64;SmartAlegra compra {{ doc.number }} {{ doc.store }}
+            </code>
+          </p>
+        </div>
+      </div>
+
       <!-- Barra de acciones -->
       <div class="flex flex-wrap gap-2 no-print">
         <button *ngIf="canEdit()" (click)="goToEdit()"

@@ -57,7 +57,8 @@ export class UserManagementComponent implements OnInit {
     { label: 'Administrador', value: 'admin' },
     { label: 'Usuario (Solo Buscador)', value: 'usuario' },
     { label: 'Facturación (Buscador + Export)', value: 'facturacion' },
-    { label: 'Compras (Buscador + Editar Compras)', value: 'compras' }
+    { label: 'Compras (Buscador + Editar Compras)', value: 'compras' },
+    { label: 'Inventario (Editar compras con caso en Chat)', value: 'inventario_compras' }
   ];
 
   statuses = [
@@ -131,6 +132,7 @@ export class UserManagementComponent implements OnInit {
       case 'admin': return 'danger';
       case 'facturacion': return 'info';
       case 'compras': return 'warn';
+      case 'inventario_compras': return 'contrast';
       default: return 'secondary';
     }
   }

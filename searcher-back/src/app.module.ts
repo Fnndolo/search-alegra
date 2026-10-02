@@ -21,6 +21,9 @@ import { ProductMapping } from './entities/product-mapping.entity';
 import { BankMapping } from './entities/bank-mapping.entity';
 import { KupoCatalogCache } from './modules/entities/kupo-catalog-cache.entity';
 import { BillingImportJob } from './modules/entities/billing-import-job.entity';
+import { BillEditCase } from './entities/bill-edit-case.entity';
+import { BillEditAudit } from './entities/bill-edit-audit.entity';
+import { ChatModule } from './chat/chat.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 
@@ -45,7 +48,9 @@ import { UsersModule } from './users/users.module';
         BankMapping,
         KupoCatalogCache,
         BillingImportJob,
-        User
+        User,
+        BillEditCase,
+        BillEditAudit
       ],
       synchronize: true, // Solo para desarrollo
       logging: false,
@@ -62,7 +67,8 @@ import { UsersModule } from './users/users.module';
     WebhooksModule,
     ElectronicBillingModule,
     AuthModule,
-    UsersModule
+    UsersModule,
+    ChatModule
   ],
   controllers: [AppController, DatabaseCleanupController],
   providers: [AppService],
