@@ -40,9 +40,14 @@ casos reales del resto de la conversación del espacio.
    **número de proyecto** (no el ID).
 2. **Habilite la Google Chat API** en ese proyecto.
 3. **Configure la app de Chat** (Chat API → Configuración):
-   - Nombre: `SmartAlegra` (el que se usará en la mención).
-   - Funcionalidad: *Recibir mensajes 1:1* y *Unirse a espacios y conversaciones en grupo*.
-   - Conexión: **URL del endpoint de la app** →
+   - Nombre: `SmartAlegra` (el que se usará en la mención), más avatar y descripción.
+   - **Habilitar funciones interactivas**: activado.
+   - Funcionalidad → marque **"Unirse a espacios y conversaciones grupales"**.
+     Es la única obligatoria: sin ella el bot no puede estar en el espacio.
+     - *No hay casilla para mensajes 1:1*: eso es implícito.
+     - *"Admitir la página principal de la app"* (evento `APP_HOME`) **no se usa**;
+       déjela sin marcar.
+   - Conexión: **URL del extremo HTTP** →
      `https://<tu-backend>.up.railway.app/google-chat/events`
    - Permisos: los usuarios de su dominio.
 4. **Cuenta de servicio**: cree una en el mismo proyecto y genere una clave JSON.
